@@ -1,12 +1,14 @@
-mod payload_engine;
-mod interface;
+pub mod payload_engine;
+pub mod interface;
+mod test;
+
 
 pub mod payload {
 
 
 }
 
-mod test;
+
 
 #[cfg(test)]
 mod tests {

@@ -1,8 +1,8 @@
-mod lexer;
-mod parser;
-mod completion;
-mod math_engine;
-mod codegen;
+pub mod lexer;
+pub mod parser;
+pub mod completion;
+pub mod math_engine;
+pub mod codegen;
 
 pub mod payload_engine {
     pub struct Engine {
