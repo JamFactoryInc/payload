@@ -1,4 +1,6 @@
 pub mod util;
+pub mod encoder;
+pub mod linker;
 pub mod lexer;
 pub mod parser;
 pub mod completion;
