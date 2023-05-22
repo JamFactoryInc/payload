@@ -35,5 +35,4 @@ impl<'a, T> MultidefEnum<'a, T>
 
         return ret
     }
-
 }

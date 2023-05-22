@@ -1,3 +1,4 @@
+mod test_utils;
 mod lexer;
 mod parser;
 

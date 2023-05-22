@@ -1,3 +1,5 @@
+pub mod pattern;
+
 use super::util::multidef_enum::MultidefEnum;
 use std::ops::Deref;
 
