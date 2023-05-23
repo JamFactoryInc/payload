@@ -1,5 +1,9 @@
 use std::ops::AddAssign;
 
+/// Mdef is a way of declaring enum values across multiple files without much overhead, as
+/// defined constants are just usize aliases
+///
+/// This is useful if default enumerations are required in addition to later-implemented ones
 pub struct MultidefEnum<'a, T>
     where T : From<usize>
         + Into<usize>

@@ -7,16 +7,17 @@ pub fn random_token_stream<'a>(len: usize) -> Vec<Token<'a>> {
     let mut start = 0;
     let mut len = 0;
 
-    vec![rand_token(get_rand_token(start); len];
+    //vec![rand_token(get_rand_token(start); len];
 
-    fn get_rand_token(&mut start : usize) -> Token {
-        start += 1;
-
-        rand_token(len, start, token_type)
-    }
+    // fn get_rand_token(&mut start : usize) -> Token {
+    //     start += 1;
+    //
+    //     rand_token(len, start, token_type)
+    // }
+    return vec![rand_token(5, 0, 0); 0];
 }
 
-pub fn rand_token<'a>(len : usize, start: usize, token_type : TokenType) -> Token {
+pub fn rand_token<'a>(len : usize, start: usize, token_type : TokenType) -> Token<'a> {
 
     let text : String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
@@ -25,7 +26,7 @@ pub fn rand_token<'a>(len : usize, start: usize, token_type : TokenType) -> Toke
         .collect();
 
     Token {
-        text,
+        text : text.as_str(),
         token_type,
         start,
     }

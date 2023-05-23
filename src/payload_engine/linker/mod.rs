@@ -6,7 +6,7 @@ pub struct Linker<'a> {
     entry_point : &'a str
 }
 
-impl Linker {
+impl<'a> Linker<'a> {
     pub fn new(entry_point : &str) -> Linker {
 
         return Linker {
@@ -15,6 +15,7 @@ impl Linker {
     }
 
     pub fn get_buf(&self) -> BufReader<File> {
+        let location = "dfsdf";
         let entry = File::open(self.entry_point)
             .expect(format!("Entry point {location} could not be read").as_str());
 

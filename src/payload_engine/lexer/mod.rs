@@ -1,4 +1,5 @@
 pub mod token;
+pub mod regex;
 use super::util::multidef_enum::MultidefEnum;
 
 pub mod lexer {
