@@ -1,6 +1,5 @@
 use std::fs::File;
 use std::io::{BufReader, ErrorKind};
-use std::io::Read;
 
 pub struct Linker<'a> {
     entry_point : &'a str
