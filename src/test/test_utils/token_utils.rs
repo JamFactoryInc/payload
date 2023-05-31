@@ -43,20 +43,19 @@ pub fn random_token_stream<'a>(len: usize) -> Vec<Token<'a>> {
 
 #[test]
 fn test1() {
-    const size : ((usize, usize, usize, usize,),
-                  (usize, usize, usize, usize,),
-                  (usize, usize, usize, usize,)) = parse_regexp(r"[]");
+    // const size : ((usize, usize, usize, usize,),
+    //               (usize, usize, usize, usize,),
+    //               (usize, usize, usize, usize,)) = parse_regexp(r"[]");
 
-    let arr = [0u8; size.0.0];
-
-    let ar2 : [T]
-    let val = CharClass::<{ size.0.0 }> {};
-    println!("{}", size.0.0)
+    // let arr = [0u8; size.0.0];
+    //
+    // let val = CharClass::<{ size.0.0 }> {};
+    // println!("{}", size.0.0)
 }
 
-enum Pattern {
-    Literal(LiteralPattern)
-}
+// enum Pattern {
+//     Literal(LiteralPattern)
+// }
 
 struct Regexp<const N : usize> {
 
@@ -73,21 +72,21 @@ struct LiteralPattern<const N : usize> {
     literal: [u8; N]
 }
 
-struct Or2Pattern<A : Pattern, B : Pattern> {
-    a: A,
-    b: B,
-}
-struct Or3Pattern<A : Pattern, B : Pattern, C : Pattern> {
-    a: A,
-    b: B,
-    c: C,
-}
-struct Or4Pattern<A : Pattern, B : Pattern, C : Pattern, D : Pattern> {
-    a: A,
-    b: B,
-    c: C,
-    d: D,
-}
+// struct Or2Pattern<A : Pattern, B : Pattern> {
+//     a: A,
+//     b: B,
+// }
+// struct Or3Pattern<A : Pattern, B : Pattern, C : Pattern> {
+//     a: A,
+//     b: B,
+//     c: C,
+// }
+// struct Or4Pattern<A : Pattern, B : Pattern, C : Pattern, D : Pattern> {
+//     a: A,
+//     b: B,
+//     c: C,
+//     d: D,
+// }
 
 struct CharClass<const N: usize> {
 
@@ -180,6 +179,6 @@ const fn parse_regexp<const N: usize>(string : &str) -> ([usize; N], usize, [usi
         panic!("Unbalanced parentheses in regular expression")
     }
 
-
+    todo!()
 
 }
