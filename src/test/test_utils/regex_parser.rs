@@ -234,13 +234,27 @@ macro_rules! parse_class {
         println!("Range from {} to {}", stringify!($from), stringify!($to));
         parse_class!($($t)+)
     };
-    ($id:ident $($t:tt)*) => {
+    ($id:ident $id_2:ident $id_3:ident $($t:tt)*) => {
         print!("batched char ");
+        println!(stringify!($id));
+        print!("batched char ");
+        println!(stringify!($id_2));
+        parse_class!($id_3 $($t)*)
+    };
+    ($id:ident $($t:tt)*) => {
+        print!("char ");
         println!(stringify!($id));
         parse_class!($($t)*)
     };
+    ($id:literal $id_2:literal $id_3:literal $($t:tt)*) => {
+        print!("batched escaped ");
+        println!(stringify!($id));
+        print!("batched escaped ");
+        println!(stringify!($id_2));
+        parse_class!($id_3 $($t)*)
+    };
     ($lit:literal $($t:tt)*) => {
-        print!("batched char ");
+        print!("escaped ");
         println!(stringify!($lit));
         parse_class!($($t)*)
     };

@@ -202,6 +202,18 @@ macro_rules! pair_args {
     }
 }
 
+#[repr(u8)]
+enum CharFlags {
+    Alphanum =      0b1100_0000,
+    Alpha =         0b1000_0000,
+    Digit =         0b0100_0000,
+    NonDigit =      0b1011_0000,
+    Whitespace =    0b0010_0000,
+    NonWhitespace = 0b1101_0000,
+    Unclassified =  0b0001_0000,
+    Any =           0b1111_0000,
+}
+
 macro_rules! ascii {
     (A) => { 65 };
     (B) => { 66 };
@@ -255,48 +267,31 @@ macro_rules! ascii {
     (x) => { 120 };
     (y) => { 121 };
     (z) => { 122 };
-    (#[t]) => { 9 };
-    (#[n]) => { 10 };
-    (#[obrace]) => { 123 };
-    (#[cbrace]) => { 125 };
-    (#[obrack]) => { 91 };
-    (#[cbrack]) => { 93 };
-    (#[oparen]) => { 40 };
-    (#[cparen]) => { 41 };
-}
-
-macro_rules! to_byte_array {
-
-    ($($id:ident)*) => {
-        [$(
-            ascii!($id)
-        ),*]
-    };
-}
-
-macro_rules! parse_regex {
-    // literal string word
-    ($leading:literal $($t:tt)+) => {
-        parse_regex!($($t)*)
-    };
-    ($leading:tt $($t:tt)*) => {
-        parse_tt!($leading)
-    };
-}
-
-macro_rules! parse_tt {
-    // group
-    ($($stuff:tt)*) => {
-
-    };
-    // char class
-    ([$($stuff:tt)*]) => {
-
-    };
-    //
-    ({$($stuff:tt)*}) => {
-
-    };
+    (0) => { 48 };
+    (1) => { 48 };
+    (2) => { 48 };
+    (3) => { 48 };
+    (4) => { 48 };
+    (5) => { 48 };
+    (6) => { 48 };
+    (7) => { 48 };
+    (8) => { 48 };
+    (9) => { 48 };
+    (_) => { 255 };
+    ('d') => { 254 };
+    ('w') => { 253 };
+    ('t') => { 9 };
+    ('n') => { 10 };
+    ('[') => { 123 };
+    (']') => { 125 };
+    ('{') => { 91 };
+    ('}') => { 93 };
+    ('(') => { 40 };
+    (')') => { 41 };
+    (' ') => { 41 };
+    ('s') => { 41 };
+    ('S') => { 41 };
+    ('_') => { 95 +  };
 }
 
 pair_args!{abc, def, fgh}
