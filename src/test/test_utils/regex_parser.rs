@@ -1,175 +1,137 @@
-use std::collections::linked_list;
-use std::fmt::{Display, Formatter};
-use std::future::Future;
-use std::mem;
-use std::ops::Add;
 use std::process::Output;
-use crate::payload_engine::lexer::token::Token;
-use rand::distributions::Alphanumeric;
-use rand::Rng;
-use crate::payload_engine::lexer::lexer::TokenType;
-use crate::payload_engine::lexer::regex;
+
 
 #[cfg(test)]
 
-pub fn random_token_stream<'a>(len: usize) -> Vec<Token<'a>> {
-    let mut start = 0;
-    let mut len = 0;
-
-    //vec![rand_token(get_rand_token(start); len];
-
-    // fn get_rand_token(&mut start : usize) -> Token {
-    //     start += 1;
-    //
-    //     rand_token(len, start, token_type)
-    // }
-    //return vec![rand_token(5, 0, 0); 0];
-    todo!()
-}
-
-// pub fn rand_token<'a>(len : usize, start: usize, token_type : TokenType) -> Token<'a> {
-//
-//     let text : Vec<u8> = rand::thread_rng()
-//         .sample_iter(&Alphanumeric)
-//         .take(len)
-//         .collect();
-//
-//     Token {
-//         text : &text,
-//         token_type,
-//         start,
-//     }
-// }
-
-#[test]
-fn test1() {
-    println!("{}", parse_regexp("[[]"))
-}
-
-struct Group {
-
-    //subgroups : Box<[RegexpGroup; D]>
-}
-
-struct CharClass<const N: usize> {
-
-}
-
-trait Empty {
-    type Output;
-    fn empty() -> Output;
-}
-
-macro_rules! gen_fixed_arrays {
-    ($t:ty,$def:literal;$($num:literal)*) => {
-        paste::item! {
-                $(
-                    const fn [<fixed_arr_ $num>]() -> [$t; $num] { [$def; $num] }
-                )*
-        }
-    }
-}
-
 macro_rules! pre_format_regex {
-    (() ($($processed:tt)*) $($res:tt)*) => {
+    // prev_state is empty so we're done
+    (() ($($processed:tt)*) () $($res:tt)*) => {
         parse_regex!($($res)*)
+        //println!("{}", stringify!($($res)*));
     };
-    (([$literal:ident] $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* [$literal]) $($res)* $literal)
+    // we've reached the end of a recursive call. Time to go back to its caller
+    (() ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) ($($prev_prev_state:tt)*) $($prev_result:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($prev_todo)*) ($($prev_processed)* ($($processed)*)) ($($prev_prev_state)*) $($prev_result)* ($($res)*))
     };
-    (($any:tt {0,0} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any:tt {0,0}) $($res)*)
+    // start a new recursion since we found a group. Pass the current state into the new prev_state
+    ((($($stuff:tt)*) $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($stuff)*) () (($($t)*) ($($processed)*) ($($prev_state)*) $($res)*))
     };
-    (($any:tt {,0} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any:tt {,0}) $($res)*)
+    // match single-letter char class
+    (([$literal:ident] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* [$literal]) ($($prev_state)*) $($res)* $literal)
     };
-    (($any:tt {0} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any:tt {0}) $($res)*)
+    // match single-escape char class
+    (([$literal:literal] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* [$literal]) ($($prev_state)*) $($res)* $literal)
     };
-    (($any:tt {0,1} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {0,1}) $($res)* $any ?)
+    (($any:tt {0,0} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any:tt {0,0}) ($($prev_state)*) $($res)*)
     };
-    (($any:tt {1,} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {1,}) $($res)* $any +)
+    (($any:tt {,0} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any:tt {,0}) ($($prev_state)*) $($res)*)
     };
-    (($any:tt {0,} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {0,}) $($res)* $any *)
+    (($any:tt {0} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any:tt {0}) ($($prev_state)*) $($res)*)
     };
-    (($any:tt {1} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {1}) $($res)* $any)
+    (($any:tt {0,1} $($t:tt)*) ($($processed:tt)* ($($prev_state:tt)*)) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {0,1}) ($($prev_state)*) $($res)* $any ?)
     };
-    (($any:tt {$repeats:literal} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {$repeats}) $($res)* $any {$repeats})
+    (($any:tt {1,} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {1,}) ($($prev_state)*) $($res)* $any +)
     };
-    (($any:tt {,$to:literal} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {,$to}) $($res)* $any {0, $to})
+    (($any:tt {0,} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {0,}) ($($prev_state)*) $($res)* $any *)
     };
-    (($any:tt {$from:literal,} $($t:tt)*) ($($processed:tt)* ) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {$from,}) $($res)* $any {$from, 9999})
+    (($any:tt {1} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {1}) ($($prev_state)*) $($res)* $any)
     };
-    (($any:tt {,} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+    (($any:tt {$repeats:literal} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {$repeats}) ($($prev_state)*) $($res)* $any {$repeats})
+    };
+    (($any:tt {,$to:literal} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {,$to}) ($($prev_state)*) $($res)* $any {0, $to})
+    };
+    (($any:tt {$from:literal,} $($t:tt)*) ($($processed:tt)* ) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {$from,}) ($($prev_state)*) $($res)* $any {$from, 9999})
+    };
+    (($any:tt {,} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
         range_err!({,} ($($t)*) ($($processed)* $any))
     };
-    (($any:tt {} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+    (($any:tt {} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
         range_err!({} ($($t)*) ($($processed)* $any))
     };
-    (($any:tt {$($stuff:tt)*} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+    (($any:tt {$($stuff:tt)*} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
         range_err!({$($stuff)*} ($($t)*) ($($processed)* $any))
     };
-    (([] $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        panic!("empty char class not allowed")
+    (([] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        panic!("{}: \n {} HERE >> [] {}",
+            "Empty char class not permitted",
+            stringify!($($processed)*),
+            stringify!($($t)*)
+        );
     };
-    (([^] $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        panic!("empty char class not allowed")
+    (([^] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        panic!("{}: \n {} HERE >> [^] {}",
+            "Empty char class not permitted",
+            stringify!($($processed)*),
+            stringify!($($t)*)
+        );
     };
-    (([^$($stuff:tt)*] $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_check_class!(($($stuff)*) ($($processed)* ^) ($($t)*))
-        pre_format_regex!(($($t)*) ($($processed)* $any) $($res)* $any)
+    (([^$($stuff:tt)*] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_check_class!(($($stuff)*) () ($($processed)* ^) ($($t)*));
+        pre_format_regex!(($($t)*) ($($processed)* [^$($stuff)*]) ($($prev_state)*) $($res)* [^$($stuff)*])
     };
-    (([$($stuff:tt)*] $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_check_class!(($($stuff)*) ($($processed)*) ($($t)*))
-        pre_format_regex!(($($t)*) ($($processed)* $any) $($res)* $any)
+    (([$($stuff:tt)*] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_check_class!(($($stuff)*) () ($($processed)*) ($($t)*));
+        pre_format_regex!(($($t)*) ($($processed)* [$($stuff)*]) ($($prev_state)*) $($res)* [$($stuff)*])
     };
-    (($any:tt $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any) $($res)* $any)
+    (($any:tt $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any) ($($prev_state)*) $($res)* $any)
     };
 }
 
 macro_rules! pre_check_class {
-    // end of char range
-    (($char:ident $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*) #br #bm) => {
+    (($from:ident - $to:ident $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
+        pre_check_class!(($($todo)*) ($($processed)* $from - $to) ($($before)*) ($($after)*))
+    };
+    ((- $to:ident $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
+        panic!("{}: \n {} [{} HERE >> - {}] {}",
+            "Illegal leading '-'. Did you mean to put an character before the '-'?",
+            stringify!($($before)*),
+            stringify!($($processed)*),
+            stringify!($to $($todo)*),
+            stringify!($($after)*)
+        );
+    };
+    (($from:ident - $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
+        panic!("{}: \n {} [{} {} - HERE >>   ] {}",
+            "Illegal trailing '-'. Did you mean to put an character after the '-'?",
+            stringify!($($before)*),
+            stringify!($($processed)*),
+            stringify!($from),
+            stringify!($($after)*)
+        );
+    };
+    ((-) () ($($before:tt)*) ($($after:tt)*)) => {
+        panic!("{}: \n {} [ HERE >> - ] {}",
+            "'-' cannot be the only content of a class",
+            stringify!($($before)*),
+            stringify!($($after)*)
+        );
+    };
+    (($char:ident $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
         pre_check_class!(($($todo)*) ($($processed)* $char) ($($before)*) ($($after)*))
     };
-    // beginning of sequence
-    (($char:ident $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
-        pre_check_class!(($($todo)*) ($($processed)* $char) ($($before)*) ($($after)*) #br)
-    };
-    // possible beginning of char range
-    (($char:ident $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*) #br) => {
-        pre_check_class!(($($todo)*) ($($processed)* $char) ($($before)*) ($($after)*) #br)
-    };
-    // invalid double '-'
-    ((-- $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*) #br) => {
-        class_err!((- $($todo)*) ($($processed)*) ($($before)*) ($($after)*) )
-    };
-    // invalid '-' at the end of the class
-    ((-) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*) #br) => {
-        pre_check_class!((-) ($($processed)* -) ($($before)*) ($($after)*))
-    };
-    // invalid '-' as no char range has begun
-    ((- $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
-        class_err!((- $($todo)*) ($($processed)*) ($($before)*) ($($after)*) )
-    };
-    // valid '-'
-    ((- $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*) #br) => {
-        pre_check_class!((- $($todo)*) ($($processed)*) ($($before)*) ($($after)*))
+    (() $($stuff:tt)*) => {
+
     };
 }
 
 macro_rules! regex {
     ($($t:tt)*) => {
         println!("Started regex");
-        pre_format_regex!(($($t)*) ())
+        pre_format_regex!(($($t)*) () ())
     };
 }
 
@@ -184,54 +146,54 @@ macro_rules! parse_regex {
     };
     (($($group:tt)*) * $($t:tt)*) => {
         println!("Repeat group *");
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
     (($($group:tt)*) + $($t:tt)*) => {
         println!("Repeat group +");
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
     (($($group:tt)*) ? $($t:tt)*) => {
         println!("Repeat group ?");
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
     (($($group:tt)*) {$repeats:literal} $($t:tt)*) => {
         println!("Repeat group {} times", $repeats);
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
     (($($group:tt)*) {$from:literal,$to:literal} $($t:tt)*) => {
         println!("Repeat group from {} to {} times", $from, $to);
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
-    (#e) => {
+    ('e) => {
         println!("Ended group");
         println!("Ended regex");
     };
-    (#e $($t:tt)*) => {
+    ('e $($t:tt)*) => {
         println!("Ended group");
         parse_regex!($($t)*)
     };
     ([$($class:tt)*] $($t:tt)*) => {
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] * $($t:tt)*) => {
         println!("Repeat class *");
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] + $($t:tt)*) => {
         println!("Repeat class +");
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] ? $($t:tt)*) => {
         println!("Repeat class ?");
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] {$repeats:literal} $($t:tt)*) => {
         println!("Repeat class {} times", $repeats);
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] {$from:literal,$to:literal} $($t:tt)*) => {
         println!("Repeat class from {} to {} times", $from, $to);
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] {$($stuff:tt)*} $($t:tt)*) => {
         range_err!($($stuff)*)
@@ -242,46 +204,55 @@ macro_rules! parse_regex {
 }
 
 macro_rules! parse_group {
-    (#b #e) => {
+    ('b 'e) => {
         panic!("Cannot have empty group")
     };
-    (#b $($t:tt)+) => {
+    ('b $($t:tt)+) => {
         println!("Start group");
         parse_regex!($($t)+)
     };
 }
 
 macro_rules! parse_class {
-    (#b #e) => {
+    ('b 'e) => {
         panic!("Cannot have empty char class")
     };
-    (#b $($t:tt)+) => {
+    ('b $($t:tt)+) => {
         println!("Start char class");
         parse_class!($($t)+)
     };
-    (#b ^ $($t:tt)+) => {
+    ('b ^ $($t:tt)+) => {
         println!("Start char class inverted");
         parse_class!($($t)+)
     };
-    ($id:ident $($t:tt)+) => {
-        print!("char ");
+    ($from:ident - $to:ident 'e $($t:tt)*) => {
+        println!("Range from {} to {}", stringify!($from), stringify!($to));
+        println!("Ended char class");
+        parse_regex!($($t)*)
+    };
+    ($from:ident - $to:ident $($t:tt)+) => {
+        println!("Range from {} to {}", stringify!($from), stringify!($to));
+        parse_class!($($t)+)
+    };
+    ($id:ident $($t:tt)*) => {
+        print!("batched char ");
         println!(stringify!($id));
-        parse_class!($($t)+)
+        parse_class!($($t)*)
     };
-    ($esc:literal $($t:tt)+) => {
-        print!("escaped ");
-        println!($esc);
-        parse_class!($($t)+)
+    ($lit:literal $($t:tt)*) => {
+        print!("batched char ");
+        println!(stringify!($lit));
+        parse_class!($($t)*)
     };
-    (#e) => {
+    ('e) => {
         println!("Ended char class");
         println!("Ended regex");
     };
-    (#e $($t:tt)+) => {
+    ('e $($t:tt)*) => {
         println!("Ended char class");
-        parse_regex!($($t)+)
+        parse_regex!($($t)*)
     };
-    (#e $($t:tt)+) => {
+    ('e $($t:tt)+) => {
         print!("escaped ");
         println!($esc);
         println!("Ended char class");
@@ -314,36 +285,6 @@ macro_rules! range_err {
     };
 }
 
-macro_rules! class_err {
-    (($($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*) #br #bm) => {
-        panic!("Parse error: {}: \n {} [{} HERE >> {}]  {}",
-            "Unterminated character range",
-            stringify!($($before)*),
-            stringify!($($processed)*),
-            stringify!($($todo)*),
-            stringify!($($after)*)
-        );
-    };
-    ((-) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*) #br) => {
-        panic!("Parse error: {}: \n {} [{} HERE >> - {}]  {}",
-            "Unterminated character range",
-            stringify!($($before)*),
-            stringify!($($processed)*),
-            stringify!($($todo)*),
-            stringify!($($after)*)
-        );
-    };
-    ((- $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
-        panic!("Parse error: {}: \n {} [{} HERE >> - {}]  {}",
-            "Unexpected '-'",
-            stringify!($($before)*),
-            stringify!($($processed)*),
-            stringify!($($todo)*),
-            stringify!($($after)*)
-        );
-    };
-}
-
 macro_rules! group_err {
     () => {}
 }
@@ -355,6 +296,58 @@ macro_rules! parse_err {
 }
 
 macro_rules! parse_literal {
+    ($($char:ident)+ $lit:literal $($t:tt)*) => {
+        $(
+            print!("batched char ");
+            println!(stringify!($char));
+        )+
+        // We can't know if the literal has a following repetition operator
+        parse_literal!($lit $($t)*)
+    };
+    ($($lit:literal)+ $char:ident $($t:tt)*) => {
+        $(
+            print!("batched escaped ");
+            println!(stringify!($lit));
+        )+
+        // We can't know if the char has a following repetition operator
+        parse_literal!($char $($t)*)
+    };
+    ($char_1:ident $char_2:ident $char_3:ident $char_4:ident $($t:tt)*) => {
+        print!("batched char ");
+        println!(stringify!($char_1));
+        print!("batched char ");
+        println!(stringify!($char_2));
+        print!("batched char ");
+        println!(stringify!($char_3));
+        // We can't know if the 4th one has a following repetition operator
+        parse_literal!($char_4 $($t)*)
+    };
+    ($char_1:ident $char_2:ident $char_3:ident $($t:tt)*) => {
+        print!("batched char ");
+        println!(stringify!($char_1));
+        print!("batched char ");
+        println!(stringify!($char_2));
+        // We can't know if the 3rd one has a following repetition operator
+        parse_literal!($char_3 $($t)*)
+    };
+    ($char_1:literal $char_2:literal $char_3:literal $char_4:literal $($t:tt)*) => {
+        print!("batched escaped ");
+        println!(stringify!($char_1));
+        print!("batched escaped ");
+        println!(stringify!($char_2));
+        print!("batched escaped ");
+        println!(stringify!($char_3));
+        // We can't know if the 4th one has a following repetition operator
+        parse_literal!($char_4 $($t)*)
+    };
+    ($char_1:literal $char_2:literal $char_3:literal $($t:tt)*) => {
+        print!("batched escaped ");
+        println!(stringify!($char_1));
+        print!("batched escaped ");
+        println!(stringify!($char_2));
+        // We can't know if the 3rd one has a following repetition operator
+        parse_literal!($char_3 $($t)*)
+    };
     ($char:ident + $($t:tt)*) => {
         print!("repeat char + ");
         println!(stringify!($char));
@@ -413,67 +406,67 @@ macro_rules! parse_literal {
     (($($group:tt)*) * $($t:tt)*) => {
         println!("End literal");
         println!("Repeat group *");
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
     (($($group:tt)*) + $($t:tt)*) => {
         println!("End literal");
         println!("Repeat group +");
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
     (($($group:tt)*) ? $($t:tt)*) => {
         println!("End literal");
         println!("Repeat group ?");
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
     (($($group:tt)*) {$repeats:literal} $($t:tt)*) => {
         println!("End literal");
         println!("Repeat group {} times", $repeats);
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
     (($($group:tt)*) {$from:literal,$to:literal} $($t:tt)*) => {
         println!("End literal");
         println!("Repeat group from {} to {} times", $from, $to);
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
     (($($group:tt)*) {$($stuff:tt)*} $($t:tt)*) => {
         range_err!($($stuff)*)
     };
     (($($group:tt)*) $($t:tt)*) => {
         println!("End literal");
-        parse_group!(#b $($group)* #e $($t)*)
+        parse_group!('b $($group)* 'e $($t)*)
     };
     // classes
     ([$($class:tt)*] * $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class *");
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] + $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class +");
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] ? $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class ?");
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] {$repeats:literal} $($t:tt)*) => {
         println!("End literal");
         print!("Repeat class {} times", $repeats);
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] {$from:literal,$to:literal} $($t:tt)*) => {
         println!("End literal");
         print!("Repeat class from {} to {} times", $from, $to);
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     ([$($class:tt)*] {$($stuff:tt)*} $($t:tt)*) => {
         range_err!($($stuff)*)
     };
     ([$($class:tt)*] $($t:tt)*) => {
         println!("End literal");
-        parse_class!(#b $($class)* #e $($t)*)
+        parse_class!('b $($class)* 'e $($t)*)
     };
     () => {
         println!("End literal");
@@ -488,7 +481,7 @@ macro_rules! parse_literal {
 
 #[test]
 fn wow() {
-    regex!(a b '\\' d (a b c) [a b c]);
+    regex!(a b '\\' d (a b c [a b]?) a b c ([b-c a] a 'a') );
 }
 
 
