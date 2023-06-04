@@ -1,3 +1,6 @@
+mod ascii_converter;
+mod regex_parser;
+
 use std::ops::BitOr;
 
 #[repr(u32)]
