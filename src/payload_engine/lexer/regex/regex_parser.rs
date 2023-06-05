@@ -13,6 +13,7 @@ const ANY : u8 =            0b1111_0000u8;
 
 #[cfg(test)]
 
+
 macro_rules! pre_format_regex {
     // prev_state is empty so we're done
     (() ($($processed:tt)*) () $($res:tt)*) => {
@@ -32,25 +33,26 @@ macro_rules! pre_format_regex {
     };
     // match invalid char class
     (([($($stuff:tt)*)] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        // panic!("{}", stringify!((($($t)*) ($($processed)*) ($($prev_state)*))))
         custom_panic!(
-            (($($t)*) ($($processed)*) ($($prev_state)*))
-            "Char classes may not contain groups"
-            [($($stuff)*)]
+            (($($t)*) ($($processed)*) ($($prev_state)*)),
+            "Char classes may not contain groups",
+            ([($($stuff)*)])
         )
     };
     // match invalid char class
     (([{$($stuff:tt)*}] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
         custom_panic!(
-            (($($t)*) ($($processed)*) ($($prev_state)*))
-            "Char classes may not contain ranges"
-            [{$($stuff)*}]
-        )
-        panic!("{}: \n {} HERE >> [{{ {} }}] {}",
+            (($($t)*) ($($processed)*) ($($prev_state)*)),
             "Char classes may not contain ranges",
-            stringify!($($processed)*),
-            stringify!($($stuff)*),
-            stringify!($($t)*)
-        );
+            ([{$($stuff)*}])
+        )
+        // panic!("{}: \n {} HERE >> [{{ {} }}] {}",
+        //     "Char classes may not contain ranges",
+        //     stringify!($($processed)*),
+        //     stringify!($($stuff)*),
+        //     stringify!($($t)*)
+        // );
     };
     // start a new recursion since we found a group. Pass the current state into the new prev_state
     ((($($stuff:tt)*) $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
@@ -504,84 +506,47 @@ macro_rules! parse_literal {
     };
 }
 
-macro_rules! test {
-    (#'a' $($t:tt)*) => {"Found A"};
-    (($($stuff:tt)*) $($t:tt)*) => { test!($($stuff)* $($t)*)};
-    ($id:tt $($t:tt)*) => {test!($($t)*)};
-    () => {"Err"};
+macro_rules! custom_panic {
+    // no prev state
+    ( (($($todo:tt)*) ($($processed:tt)*) () $($garbage:tt)*), $message:literal, ($($problem:tt)*) ) => {
+        reverse_custom_panic!( () ($($processed)*) ($($processed)*) $message ($($problem:)*) ($($processed)* $($problem)* $($todo)*) )
+    };
+    // one prev state
+    ( (($($todo:tt)*) ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) () $($garbage:tt)*)), $message:literal, ($($problem:tt)*) ) => {
+        reverse_custom_panic!( (($($prev_processed)*)) ($($processed)*) (($($prev_todo)*)) $message ($($problem)*) ($($processed)* $($problem)* $($todo)*) )
+    };
+    // more than one prev state
+    ( (($($todo:tt)*) ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) $prev_state:tt) $($garbage:tt)*), $message:literal, ($($problem:tt)*) ) => {
+        custom_panic!( $prev_state (($($prev_processed)*)) (($($prev_todo)*)) $message ($($processed)* $($problem)* $($todo)*) ($($processed)*) )
+    };
+
+    // prev state
+    ( (($($todo:tt)*) ($($processed:tt)*) ()) ($($before_layers:tt)*) ($($after_layers:tt)*) $message:literal $problem:tt $constructed:tt $before_concat:tt ) => {
+        reverse_custom_panic!( (($($processed)*) $($before_layers)*) $before_concat (($($todo)*) $($after_layers)*) $message $problem $constructed )
+    };
+    // more than one prev state
+    ( (($($todo:tt)*) ($($processed:tt)*) $prev_state:tt) ($($before_layers:tt)*) ($($after_layers:tt)*) $message:literal $problem:tt $constructed:tt $before_concat:tt ) => {
+        custom_panic!( $prev_state (($($processed)*) $($before_layers)*) (($($todo)*) $($after_layers)*) $message $problem $constructed $before_concat )
+    };
+
+
 }
 
-macro_rules! custom_panic {
-    ((($($todo:tt)*) ($($processed:tt)*) ()) $message:literal $($problem:tt)*) => {
+macro_rules! reverse_custom_panic {
+    ( (($($before:tt)*) $($before_layers:tt)+) ($($before_concat:tt)*) (($($after:tt)*) $($after_layers:tt)+) $message:literal $problem:tt ($($constructed:tt)*) ) => {
+        reverse_custom_panic!(($($before_layers)+) ($($before)* $($before_concat)*) ($($after_layers)+) $message $problem ($($before)* ($($constructed)*) $($after)*))
+    };
+    ( (($($before:tt)*)) ($($before_concat:tt)*) (($($after:tt)*)) $message:literal ($($problem:tt)*) ($($constructed:tt)*) ) => {
+        println!("this: {}", stringify!($($before)* $($before_concat)*));
         panic!("{}:\n{}\n{}",
             $message,
-            stringify!($($processed)* $($problem)* $($todo)*),
-        // 'a' and -1 here to make sure it adds a space correctly when stringifying
-            " ".repeat(stringify!($($processed)* a).len() - 1) + &"^".repeat(stringify!($($problem)*).len())
+            stringify!($($before)* ($($constructed)*) $($after)*),
+            " ".repeat(stringify!($($before)* $($before_concat)*).len() + 1) + &"^".repeat(stringify!($($problem)*).len())
         )
-    };
-    ((($($todo:tt)*) ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) ($($prev_prev_state:tt)*) $($prev_res:tt)*)) $message:literal $problem:literal) => {
-        custom_panic((($($prev_todo)* $($todo)*) ($($prev_processed)* $($processed)*) ($($prev_prev_state)*)) $message $problem)
     };
 }
 
 #[test]
 fn wow() {
-    regex!(a #'a');
-}
-
-
-const fn parse_regexp(string : &str) -> u8 {
-    let mut ret = 0;
-    let bytes = string.as_bytes();
-    let mut i = 0;
-
-    let mut paren_depth = 0;
-    let mut bracket_depth = 0;
-    let mut is_escaped = false;
-    let mut in_char_class = false;
-
-    while i != bytes.len() {
-        let char = bytes[i];
-
-        if !is_escaped {
-
-            match char {
-                b'(' => {
-                    if paren_depth == 1 {
-                        panic!("Cannot have nested groups");
-                    }
-                    paren_depth += 1;
-                },
-                b')' => paren_depth -= 1,
-                b'[' => {
-                    in_char_class = true;
-                    if bracket_depth == 1 {
-                        panic!("Cannot have nested char classes");
-                    }
-                    bracket_depth += 1;
-                },
-                b']' => {
-                    in_char_class = false;
-                    bracket_depth -= 1;
-                },
-                b'*' | b'+' => (),
-
-                _ => ()
-            }
-        } else {
-            match char {
-                _ => {
-
-                }
-            }
-        }
-        i += 1;
-    }
-
-    if paren_depth != 0 {
-        panic!("Unbalanced parentheses in regular expression")
-    }
-
-    return ret as u8;
+    regex!(a b ( c d [()]));
 }
