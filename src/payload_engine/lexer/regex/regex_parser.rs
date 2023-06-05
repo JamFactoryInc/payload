@@ -24,12 +24,12 @@ macro_rules! pre_format_regex {
     (() ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) ($($prev_prev_state:tt)*) $($prev_result:tt)*) $($res:tt)*) => {
         pre_format_regex!(($($prev_todo)*) ($($prev_processed)* ($($processed)*)) ($($prev_prev_state)*) $($prev_result)* ($($res)*))
     };
-    ((() $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        panic!("{}: \n {} HERE >> () {}",
+    ((() $($t:tt)*) $processed:tt $prev_state:tt $($res:tt)*) => {
+        custom_panic!(
+            (($($t)*) $processed $prev_state),
             "Empty group not permitted",
-            stringify!($($processed)*),
-            stringify!($($t)*)
-        );
+            (())
+        )
     };
     // match invalid char class
     (([($($stuff:tt)*)] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
@@ -47,81 +47,75 @@ macro_rules! pre_format_regex {
             "Char classes may not contain ranges",
             ([{$($stuff)*}])
         )
-        // panic!("{}: \n {} HERE >> [{{ {} }}] {}",
-        //     "Char classes may not contain ranges",
-        //     stringify!($($processed)*),
-        //     stringify!($($stuff)*),
-        //     stringify!($($t)*)
-        // );
     };
     // start a new recursion since we found a group. Pass the current state into the new prev_state
-    ((($($stuff:tt)*) $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($stuff)*) () (($($t)*) ($($processed)*) ($($prev_state)*) $($res)*))
+    ((($($stuff:tt)*) $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($stuff)*) () (($($t)*) ($($processed)*) $($res)*))
     };
     // match single-escape char class
-    (([$literal:tt] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* [$literal]) ($($prev_state)*) $($res)* $literal)
+    (([$literal:tt] $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* [$literal]) $($res)* $literal)
     };
-    (($any:tt {0,0} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {0,0}) ($($prev_state)*) $($res)*)
+    (($any:tt {0,0} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {0,0}) $($res)*)
     };
-    (($any:tt {,0} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {,0}) ($($prev_state)*) $($res)*)
+    (($any:tt {,0} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {,0}) $($res)*)
     };
-    (($any:tt {0} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {0}) ($($prev_state)*) $($res)*)
+    (($any:tt {0} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {0}) $($res)*)
     };
-    (($any:tt {0,1} $($t:tt)*) ($($processed:tt)* ($($prev_state:tt)*)) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {0,1}) ($($prev_state)*) $($res)* $any ?)
+    (($any:tt {0,1} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {0,1}) $($res)* $any ?)
     };
-    (($any:tt {1,} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {1,}) ($($prev_state)*) $($res)* $any +)
+    (($any:tt {1,} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {1,}) $($res)* $any +)
     };
-    (($any:tt {0,} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {0,}) ($($prev_state)*) $($res)* $any *)
+    (($any:tt {0,} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {0,}) $($res)* $any *)
     };
-    (($any:tt {1} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {1}) ($($prev_state)*) $($res)* $any)
+    (($any:tt {1} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {1}) $($res)* $any)
     };
-    (($any:tt {$repeats:literal} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {$repeats}) ($($prev_state)*) $($res)* $any {$repeats})
+    (($any:tt {$repeats:literal} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {$repeats}) $($res)* $any {$repeats})
     };
-    (($any:tt {,$to:literal} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {,$to}) ($($prev_state)*) $($res)* $any {0, $to})
+    (($any:tt {,$to:literal} $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {,$to}) $($res)* $any {0, $to})
     };
-    (($any:tt {$from:literal,} $($t:tt)*) ($($processed:tt)* ) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {$from,}) ($($prev_state)*) $($res)* $any {$from, 9999})
+    (($any:tt {$from:literal,} $($t:tt)*) ($($processed:tt)* ) $($res:tt)*) => {
+        pre_format_regex!(($($t)*) ($($processed)* $any {$from,}) $($res)* $any {$from, 9999})
     };
-    (($any:tt {,} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        range_err!({,} ($($t)*) ($($processed)* $any))
+    (({,} $($t:tt)*) ($($processed:tt)*) $prev_state:tt $($res:tt)*) => {
+        custom_panic!(
+            (($($t)*) ($($processed)*) $prev_state),
+            "Range must have at least one bound",
+            (,) 'use_brace
+        )
     };
-    (($any:tt {} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        range_err!({} ($($t)*) ($($processed)* $any))
+    (({} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
+        custom_panic!(
+            (($($todo)*) ($($processed)*) $prev_state),
+            "Range must not be empty",
+            ({})
+        )
     };
-    (($any:tt {$($stuff:tt)*} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        range_err!({$($stuff)*} ($($t)*) ($($processed)* $any))
+    (({$($stuff:tt)*} $($t:tt)*) ($($processed:tt)*) $prev_state:tt $($res:tt)*) => {
+        custom_panic!(
+            (($($t)*) ($($processed)*) $prev_state),
+            "Illegal range contents",
+            ($($stuff)*) 'use_brace
+        )
     };
-    (([] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        panic!("{}: \n {} HERE >> [] {}",
+    (([] $($t:tt)*) ($($processed:tt)*) $prev_state:tt $($res:tt)*) => {
+        custom_panic!(
+            (($($t)*) ($($processed)*) $prev_state),
             "Empty char class not permitted",
-            stringify!($($processed)*),
-            stringify!($($t)*)
-        );
+            ([])
+        )
     };
-    (([^] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        panic!("{}: \n {} HERE >> [^] {}",
-            "Empty char class not permitted",
-            stringify!($($processed)*),
-            stringify!($($t)*)
-        );
-    };
-    (([^$($stuff:tt)*] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_check_class!(($($stuff)*) () ($($processed)* ^) ($($t)*));
-        pre_format_regex!(($($t)*) ($($processed)* [^$($stuff)*]) ($($prev_state)*) $($res)* [^$($stuff)*])
-    };
-    (([$($stuff:tt)*] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        pre_check_class!(($($stuff)*) () ($($processed)*) ($($t)*));
-        pre_format_regex!(($($t)*) ($($processed)* [$($stuff)*]) ($($prev_state)*) $($res)* [$($stuff)*])
+    (([$($stuff:tt)*] $($t:tt)*) ($($processed:tt)*) $prev_state:tt $($res:tt)*) => {
+        pre_check_class!( ($($stuff)*) () (($($t)*) ($($processed)*) $prev_state) );
     };
     (($any:tt $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
         pre_format_regex!(($($t)*) ($($processed)* $any) ($($prev_state)*) $($res)* $any)
@@ -129,39 +123,61 @@ macro_rules! pre_format_regex {
 }
 
 macro_rules! pre_check_class {
-    (($from:ident - $to:ident $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
-        pre_check_class!(($($todo)*) ($($processed)* $from - $to) ($($before)*) ($($after)*))
+    // illegal caret in class
+    ( (^ $($todo:tt)*) () $prev_state:tt ) => {
+        pre_check_class!(($($todo)*) (^) $prev_state )
     };
-    ((- $to:ident $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
-        panic!("{}: \n {} [{} HERE >> - {}] {}",
+    // illegal caret in class
+    ( (^ $($todo:tt)*) ($($processed:tt)*) $prev_state:tt ) => {
+        custom_panic!(
+            (($($todo)*) ($($processed)*) $prev_state),
+            "Illegal caret in char class",
+            (^) 'use_bracket
+        )
+    };
+    ( ({$($stuff:tt)*} $($todo:tt)*) ($($processed:tt)*) $prev_state:tt ) => {
+        custom_panic!(
+            (($($todo)*) ($($processed)*) $prev_state),
+            "Char classes may not contain ranges",
+            ({$($stuff)*}) 'use_bracket
+        )
+    };
+    ( (($($stuff:tt)*) $($todo:tt)*) ($($processed:tt)*) $prev_state:tt ) => {
+        custom_panic!(
+            (($($todo)*) ($($processed)*) $prev_state),
+            "Char classes may not contain groups",
+            (($($stuff)*)) 'use_bracket
+        )
+    };
+    ( ($from:ident - $to:ident $($todo:tt)*) ($($processed:tt)*) $prev_state:tt ) => {
+        pre_check_class!(($($todo)*) ($($processed)* $from - $to) $prev_state )
+    };
+    ( (- $to:ident $($todo:tt)*) ($($processed:tt)*) $prev_state:tt) => {
+        custom_panic!(
+            (($($todo)*) ($($processed)*) $prev_state),
             "Illegal leading '-'. Did you mean to put an character before the '-'?",
-            stringify!($($before)*),
-            stringify!($($processed)*),
-            stringify!($to $($todo)*),
-            stringify!($($after)*)
-        );
+            (- $to) 'use_bracket
+        )
     };
-    (($from:ident - $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
-        panic!("{}: \n {} [{} {} - HERE >>   ] {}",
+    ( ($from:ident - $($todo:tt)*) ($($processed:tt)*) $prev_state:tt ) => {
+        custom_panic!(
+            (($($todo)*) ($($processed)*) $prev_state),
             "Illegal trailing '-'. Did you mean to put an character after the '-'?",
-            stringify!($($before)*),
-            stringify!($($processed)*),
-            stringify!($from),
-            stringify!($($after)*)
-        );
+            ($from -) 'use_bracket
+        )
     };
-    ((-) () ($($before:tt)*) ($($after:tt)*)) => {
-        panic!("{}: \n {} [ HERE >> - ] {}",
+    ( (-) () $prev_state:tt $($res:tt)*) => {
+        custom_panic!(
+            (($($todo)*) ($($processed)*) $prev_state),
             "'-' cannot be the only content of a class",
-            stringify!($($before)*),
-            stringify!($($after)*)
-        );
+            (-) 'use_bracket
+        )
     };
-    (($char:ident $($todo:tt)*) ($($processed:tt)*) ($($before:tt)*) ($($after:tt)*)) => {
-        pre_check_class!(($($todo)*) ($($processed)* $char) ($($before)*) ($($after)*))
+    ( ($char:ident $($todo:tt)*) ($($processed:tt)*) $prev_state:tt $($res:tt)* ) => {
+        pre_check_class!(($($todo)*) ($($processed)* $char) $prev_state)
     };
-    (() $($stuff:tt)*) => {
-
+    ( () ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) $prev_state:tt $($prev_res:tt)*) ) => {
+        pre_format_regex!(($($prev_todo)*) ($($prev_processed)* [$($processed)*]) $prev_state $($prev_res)* [$($processed)*])
     };
 }
 
@@ -241,9 +257,6 @@ macro_rules! parse_regex {
     ([$($class:tt)*] {$from:literal,$to:literal} $($t:tt)*) => {
         println!("Repeat class from {} to {} times", $from, $to);
         parse_class!('b $($class)* 'e $($t)*)
-    };
-    ([$($class:tt)*] {$($stuff:tt)*} $($t:tt)*) => {
-        range_err!($($stuff)*)
     };
     () => {
 
@@ -454,9 +467,6 @@ macro_rules! parse_literal {
         println!("Start group");
         parse_regex!($($group)* 'e $($t)*)
     };
-    (($($group:tt)*) {$($stuff:tt)*} $($t:tt)*) => {
-        range_err!($($stuff)*)
-    };
     (($($group:tt)*) $($t:tt)*) => {
         println!("End literal");
         println!("Start group");
@@ -489,9 +499,6 @@ macro_rules! parse_literal {
         println!("Repeat class from {} to {} times", $from, $to);
         parse_class!('b $($class)* 'e $($t)*)
     };
-    ([$($class:tt)*] {$($stuff:tt)*} $($t:tt)*) => {
-        range_err!($($stuff)*)
-    };
     ([$($class:tt)*] $($t:tt)*) => {
         println!("End literal");
         parse_class!('b $($class)* 'e $($t)*)
@@ -508,45 +515,67 @@ macro_rules! parse_literal {
 
 macro_rules! custom_panic {
     // no prev state
-    ( (($($todo:tt)*) ($($processed:tt)*) () $($garbage:tt)*), $message:literal, ($($problem:tt)*) ) => {
-        reverse_custom_panic!( () ($($processed)*) ($($processed)*) $message ($($problem:)*) ($($processed)* $($problem)* $($todo)*) )
+    ((($($todo:tt)*) ($($processed:tt)*) () $($garbage:tt)*), $message:literal, ($($problem:tt)*) $($use_bracket:tt)? ) => {
+        reverse_custom_panic!( (($($processed)*)) () (($($todo)*)) $message ($($use_bracket)? $($problem)*) ( $($problem)* ) )
     };
     // one prev state
-    ( (($($todo:tt)*) ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) () $($garbage:tt)*)), $message:literal, ($($problem:tt)*) ) => {
-        reverse_custom_panic!( (($($prev_processed)*)) ($($processed)*) (($($prev_todo)*)) $message ($($problem)*) ($($processed)* $($problem)* $($todo)*) )
+    ( (($($todo:tt)*) ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) () $($garbage:tt)*)), $message:literal, ($($problem:tt)*) $($use_bracket:tt)? ) => {
+        reverse_custom_panic!( (($($prev_processed)*)) ($($processed)*) (($($prev_todo)*)) $message ($($use_bracket)? $($problem)*) ($($processed)* $($problem)* $($todo)*) )
     };
     // more than one prev state
-    ( (($($todo:tt)*) ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) $prev_state:tt) $($garbage:tt)*), $message:literal, ($($problem:tt)*) ) => {
-        custom_panic!( $prev_state (($($prev_processed)*)) (($($prev_todo)*)) $message ($($processed)* $($problem)* $($todo)*) ($($processed)*) )
+    ( (($($todo:tt)*) ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) $prev_state:tt $($garbage:tt)*) $($garbage_2:tt)*), $message:literal, ($($problem:tt)*) $($use_bracket:tt)? ) => {
+        custom_panic!( $prev_state (($($prev_processed)*)) (($($prev_todo)*)) $message ($($use_bracket)? $($problem)*) ($($processed)* $($problem)* $($todo)*) () )
     };
 
     // prev state
-    ( (($($todo:tt)*) ($($processed:tt)*) ()) ($($before_layers:tt)*) ($($after_layers:tt)*) $message:literal $problem:tt $constructed:tt $before_concat:tt ) => {
+    ( (($($todo:tt)*) ($($processed:tt)*) () $($garbage:tt)*) ($($before_layers:tt)*) ($($after_layers:tt)*) $message:literal $problem:tt $constructed:tt $before_concat:tt ) => {
         reverse_custom_panic!( (($($processed)*) $($before_layers)*) $before_concat (($($todo)*) $($after_layers)*) $message $problem $constructed )
     };
     // more than one prev state
-    ( (($($todo:tt)*) ($($processed:tt)*) $prev_state:tt) ($($before_layers:tt)*) ($($after_layers:tt)*) $message:literal $problem:tt $constructed:tt $before_concat:tt ) => {
+    ( (($($todo:tt)*) ($($processed:tt)*) $prev_state:tt $($garbage:tt)*) ($($before_layers:tt)*) ($($after_layers:tt)*) $message:literal $problem:tt $constructed:tt $before_concat:tt ) => {
         custom_panic!( $prev_state (($($processed)*) $($before_layers)*) (($($todo)*) $($after_layers)*) $message $problem $constructed $before_concat )
     };
 
+    // ($($stuff:tt)*) => {
+    //     panic!("{}", stringify!($($stuff)*))
+    // }
 
 }
 
 macro_rules! reverse_custom_panic {
-    ( (($($before:tt)*) $($before_layers:tt)+) ($($before_concat:tt)*) (($($after:tt)*) $($after_layers:tt)+) $message:literal $problem:tt ($($constructed:tt)*) ) => {
-        reverse_custom_panic!(($($before_layers)+) ($($before)* $($before_concat)*) ($($after_layers)+) $message $problem ($($before)* ($($constructed)*) $($after)*))
+    ( (($($before:tt)*) $($before_layers:tt)+) ($($before_concat:tt)*) (($($after:tt)*) $($after_layers:tt)+) $message:literal ($('use_bracket $problem:tt)*) ($($constructed:tt)*) $($depth_counter:literal)* ) => {
+        reverse_custom_panic!(($($before_layers)+) ($($before)* $($before_concat)*) ($($after_layers)+) $message ($($problem)*) ($($before)* [$($constructed)*] $($after)*) $($depth_counter)* 1)
     };
-    ( (($($before:tt)*)) ($($before_concat:tt)*) (($($after:tt)*)) $message:literal ($($problem:tt)*) ($($constructed:tt)*) ) => {
-        println!("this: {}", stringify!($($before)* $($before_concat)*));
+    ( (($($before:tt)*) $($before_layers:tt)+) ($($before_concat:tt)*) (($($after:tt)*) $($after_layers:tt)+) $message:literal ($('use_brace $problem:tt)*) ($($constructed:tt)*) $($depth_counter:literal)* ) => {
+        reverse_custom_panic!(($($before_layers)+) ($($before)* $($before_concat)*) ($($after_layers)+) $message ($($problem)*) ($($before)* {$($constructed)*} $($after)*) $($depth_counter)* 1)
+    };
+    ( (($($before:tt)*) $($before_layers:tt)+) ($($before_concat:tt)*) (($($after:tt)*) $($after_layers:tt)+) $message:literal $problem:tt ($($constructed:tt)*) $($depth_counter:literal)* ) => {
+        reverse_custom_panic!(($($before_layers)+) ($($before)* $($before_concat)*) ($($after_layers)+) $message $problem ($($before)* ($($constructed)*) $($after)*) $($depth_counter)* 1)
+    };
+    ( (($($before:tt)*)) ($($before_concat:tt)*) (($($after:tt)*)) $message:literal ('use_brace $($problem:tt)*) ($($constructed:tt)*) $($depth_counter:literal)* ) => {
+        panic!("{}:\n{}\n{}",
+            $message,
+            stringify!($($before)* {$($constructed)*} $($after)*),
+            " ".repeat(stringify!($($before)* $($before_concat)*).len() + 3 $(+$depth_counter)*) + &"^".repeat(stringify!($($problem)*).len())
+        )
+    };
+    ( (($($before:tt)*)) ($($before_concat:tt)*) (($($after:tt)*)) $message:literal ('use_bracket $($problem:tt)*) ($($constructed:tt)*) $($depth_counter:literal)* ) => {
+        panic!("{}:\n{}\n{}",
+            $message,
+            stringify!($($before)* [$($constructed)*] $($after)*),
+            " ".repeat(stringify!($($before)* $($before_concat)*).len() + 1 $(+$depth_counter)*) + &"^".repeat(stringify!($($problem)*).len())
+        )
+    };
+    ( (($($before:tt)*)) ($($before_concat:tt)*) (($($after:tt)*)) $message:literal ($($problem:tt)*) ($($constructed:tt)*) $($depth_counter:literal)* ) => {
         panic!("{}:\n{}\n{}",
             $message,
             stringify!($($before)* ($($constructed)*) $($after)*),
-            " ".repeat(stringify!($($before)* $($before_concat)*).len() + 1) + &"^".repeat(stringify!($($problem)*).len())
+            " ".repeat(stringify!($($before)* $($before_concat)*).len() + 1 $(+$depth_counter)*) + &"^".repeat(stringify!($($problem)*).len())
         )
     };
 }
 
 #[test]
 fn wow() {
-    regex!(a b ( c d [()]));
+    regex!(a []);
 }
