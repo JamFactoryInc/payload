@@ -1,6 +1,6 @@
 use std::fmt::Display;
 use crate::payload_engine::lexer::regex::ascii_converter::{ascii, ascii_l};
-use crate::payload_engine::util::macros::{sample, sample_macro, to_struct, to_trait_impl};
+use crate::payload_engine::util::macros::{sample_macro, pair_macro, to_struct_body, to_struct, to_trait_impl};
 
 const ALPHA_NUMERIC : u8  = 0b1100_0000u8;
 const ALPHA : u8 =          0b1000_0000u8;
@@ -16,18 +16,30 @@ enum Res {
     No
 }
 
-struct Wow {
-    a : u8
+struct Range {
+    from: u8,
+    to: u8,
+}
+
+enum Char {
+    Char(u8 ),
+    Class(u8, u64),
+    RepeatedChar(u8, Range),
+    RepeatedClass(u64, Range)
+}
+
+enum GroupType {
+    Char(Char),
+    Seq([u8; 8]),
+    Literal(String),
+}
+
+struct Group<const size: usize> {
+    sequence: [GroupType; size]
 }
 
 trait Pattern {
     fn consume(self, some: u8) -> Res;
-}
-
-impl Pattern for Wow {
-    fn consume(self, some: u8) -> Res {
-        return Res::Ok
-    }
 }
 
 macro_rules! pre_format_regex {
@@ -215,6 +227,8 @@ macro_rules! regex {
         sample_macro!( (to_struct) (UberPattern (Pattern)) ($($regexp)+) ( (A) (B) (C) ));
         sample_macro!( (to_trait_impl) (Pattern UberPattern (Pattern) (body_generator)) ($($regexp)+) ( (A) (B) (C) ));
 
+        pair_macro!( (to_struct_body) (UberPattern (pre_format_regex)) ($($regexp)+) ( (A) (B) (C) ));
+
         UberPattern {
              $( A: pre_format_regex!($regexp () ()) ),+
         }
@@ -234,8 +248,8 @@ macro_rules! parse_regex {
         parse_literal!($esc $($t)*)
     };
     ($esc:ident $($t:tt)*) => {
-        println!("Start literal");
-        parse_literal!($esc $($t)*)
+        {println!("Start literal");
+        parse_literal!($esc $($t)*)}
     };
     (($($group:tt)*) * $($t:tt)*) => {
         println!("Repeat group *");
@@ -263,8 +277,8 @@ macro_rules! parse_regex {
         parse_regex!($($group)* 'e $($t)*)
     };
     ('e) => {
-        println!("Ended group");
-        println!("Ended regex");
+        {println!("Ended group");
+        println!("Ended regex");}
     };
     ('e $($t:tt)*) => {
         println!("Ended group");
@@ -429,8 +443,8 @@ macro_rules! parse_literal {
         parse_literal!($($t)*)
     };
     ($char:ident $($t:tt)*) => {
-        println!("char {} {}", stringify!($char), ascii!($char));
-        parse_literal!($($t)*)
+        {println!("char {} {}", stringify!($char), ascii!($char));
+        parse_literal!($($t)*)}
     };
     (#$esc:tt $($t:tt)*) => {
         println!("escaped {} {}", stringify!($esc), ascii_l!($esc));
@@ -468,10 +482,10 @@ macro_rules! parse_literal {
         parse_regex!($($group)* 'e $($t)*)
     };
     (($($group:tt)*) $($t:tt)*) => {
-        println!("End literal");
+        {println!("End literal");
         println!("Start group");
         //panic!("{}", stringify!($($group)*));
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* 'e $($t)*)}
     };
     // classes
     ([$($class:tt)*] * $($t:tt)*) => {
@@ -508,8 +522,8 @@ macro_rules! parse_literal {
         println!("End regex");
     };
     ($($t:tt)+) => {
-        println!("End literal ");
-        parse_regex!($($t)+)
+        {println!("End literal ");
+        parse_regex!($($t)+)}
     };
 }
 

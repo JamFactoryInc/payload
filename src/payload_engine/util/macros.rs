@@ -213,9 +213,9 @@ macro_rules! to_struct {
 }
 
 macro_rules! to_struct_body {
-    ($name:ident () ($body_generator:ident) $($types:tt)+) => {
-        struct $name <$($types),+> {
-            $($types : $types),+
+    ($name:ident ($field_generator:ident) $(($input:tt $type:tt))+) => {
+        $name {
+            $($type : $field_generator ! ($input)),+
         }
     };
 }
@@ -238,23 +238,21 @@ macro_rules! to_trait_impl {
 }
 
 
-// for (let i = 0; i < 10; i++ ) {
-// let pat = []
-// for (let j = 0; j <= i; j++) {
-// pat.push(`$d${j}:tt`)
-// }
-// let sam = []
-// for (let j = 0; j <= i; j++) {
-// sam.push(`($($s${j}:tt)*)`)
-// }
-// let res = []
-// for (let j = 0; j <= i; j++) {
-// res.push(`$($s${j})*`)
-// }
-//
-// console.log(`( ($name:ident) ($($args:tt)*) (${pat.join(" ")}) (${sam.join(" ")} $($sample:tt)*) ) => { $name ! ($($args)* ${res.join(" ")}) };`)
-// }
 
+macro_rules! pair_macro {
+( ($name:ident) ($($args:tt)*) ($d0:tt) (($($s0:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* ($d0 $($s0)*) ) };
+( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt) (($($s0:tt)*) ($($s1:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* ($d0 $($s0)*) ($d1 $($s1)*) ) };
+( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt $d2:tt) (($($s0:tt)*) ($($s1:tt)*) ($($s2:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* ($d0 $($s0)*) ($d1 $($s1)*) ($d2 $($s2)*) ) };
+( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt $d2:tt $d3:tt) (($($s0:tt)*) ($($s1:tt)*) ($($s2:tt)*) ($($s3:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* ($d0 $($s0)*) ($d1 $($s1)*) ($d2 $($s2)*) ($d3 $($s3)*) ) };
+( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt $d2:tt $d3:tt $d4:tt) (($($s0:tt)*) ($($s1:tt)*) ($($s2:tt)*) ($($s3:tt)*) ($($s4:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* ($d0 $($s0)*) ($d1 $($s1)*) ($d2 $($s2)*) ($d3 $($s3)*) ($d4 $($s4)*) ) };
+( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt $d2:tt $d3:tt $d4:tt $d5:tt) (($($s0:tt)*) ($($s1:tt)*) ($($s2:tt)*) ($($s3:tt)*) ($($s4:tt)*) ($($s5:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* ($d0 $($s0)*) ($d1 $($s1)*) ($d2 $($s2)*) ($d3 $($s3)*) ($d4 $($s4)*) ($d5 $($s5)*) ) };
+( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt $d2:tt $d3:tt $d4:tt $d5:tt $d6:tt) (($($s0:tt)*) ($($s1:tt)*) ($($s2:tt)*) ($($s3:tt)*) ($($s4:tt)*) ($($s5:tt)*) ($($s6:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* ($d0 $($s0)*) ($d1 $($s1)*) ($d2 $($s2)*) ($d3 $($s3)*) ($d4 $($s4)*) ($d5 $($s5)*) ($d6 $($s6)*) ) };
+( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt $d2:tt $d3:tt $d4:tt $d5:tt $d6:tt $d7:tt) (($($s0:tt)*) ($($s1:tt)*) ($($s2:tt)*) ($($s3:tt)*) ($($s4:tt)*) ($($s5:tt)*) ($($s6:tt)*) ($($s7:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* ($d0 $($s0)*) ($d1 $($s1)*) ($d2 $($s2)*) ($d3 $($s3)*) ($d4 $($s4)*) ($d5 $($s5)*) ($d6 $($s6)*) ($d7 $($s7)*) ) };
+( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt $d2:tt $d3:tt $d4:tt $d5:tt $d6:tt $d7:tt $d8:tt) (($($s0:tt)*) ($($s1:tt)*) ($($s2:tt)*) ($($s3:tt)*) ($($s4:tt)*) ($($s5:tt)*) ($($s6:tt)*) ($($s7:tt)*) ($($s8:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* ($d0
+$($s0)*) ($d1 $($s1)*) ($d2 $($s2)*) ($d3 $($s3)*) ($d4 $($s4)*) ($d5 $($s5)*) ($d6 $($s6)*) ($d7 $($s7)*) ($d8 $($s8)*) ) };
+( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt $d2:tt $d3:tt $d4:tt $d5:tt $d6:tt $d7:tt $d8:tt $d9:tt) (($($s0:tt)*) ($($s1:tt)*) ($($s2:tt)*) ($($s3:tt)*) ($($s4:tt)*) ($($s5:tt)*) ($($s6:tt)*) ($($s7:tt)*) ($($s8:tt)*) ($($s9:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* ($d0 $($s0)*) ($d1 $($s1)*) ($d2 $($s2)*) ($d3 $($s3)*) ($d4 $($s4)*) ($d5 $($s5)*) ($d6 $($s6)*) ($d7 $($s7)*) ($d8 $($s8)*) ($d9 $($s9)*) ) };
+
+}
 
 macro_rules! sample_macro {
 ( ($name:ident) ($($args:tt)*) ($d0:tt) (($($s0:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* $($s0)*) };
@@ -269,6 +267,9 @@ macro_rules! sample_macro {
 ( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt $d2:tt $d3:tt $d4:tt $d5:tt $d6:tt $d7:tt $d8:tt $d9:tt) (($($s0:tt)*) ($($s1:tt)*) ($($s2:tt)*) ($($s3:tt)*) ($($s4:tt)*) ($($s5:tt)*) ($($s6:tt)*) ($($s7:tt)*) ($($s8:tt)*) ($($s9:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* $($s0)* $($s1)* $($s2)* $($s3)* $($s4)* $($s5)* $($s6)* $($s7)* $($s8)* $($s9)*) };
 
 }
+
+pub(crate) use pair_macro;
+pub(crate) use to_struct_body;
 pub(crate) use sample_macro;
 pub(crate) use to_trait_impl;
 pub(crate) use to_struct;
