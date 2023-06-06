@@ -237,6 +237,25 @@ macro_rules! to_trait_impl {
     };
 }
 
+
+// for (let i = 0; i < 10; i++ ) {
+// let pat = []
+// for (let j = 0; j <= i; j++) {
+// pat.push(`$d${j}:tt`)
+// }
+// let sam = []
+// for (let j = 0; j <= i; j++) {
+// sam.push(`($($s${j}:tt)*)`)
+// }
+// let res = []
+// for (let j = 0; j <= i; j++) {
+// res.push(`$($s${j})*`)
+// }
+//
+// console.log(`( ($name:ident) ($($args:tt)*) (${pat.join(" ")}) (${sam.join(" ")} $($sample:tt)*) ) => { $name ! ($($args)* ${res.join(" ")}) };`)
+// }
+
+
 macro_rules! sample_macro {
 ( ($name:ident) ($($args:tt)*) ($d0:tt) (($($s0:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* $($s0)*) };
 ( ($name:ident) ($($args:tt)*) ($d0:tt $d1:tt) (($($s0:tt)*) ($($s1:tt)*) $($sample:tt)*) ) => { $name ! ($($args)* $($s0)* $($s1)*) };
