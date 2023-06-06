@@ -1,5 +1,6 @@
-use std::process::Output;
+use std::fmt::Display;
 use crate::payload_engine::lexer::regex::ascii_converter::{ascii, ascii_l};
+use crate::payload_engine::util::macros::{sample, sample_macro, to_struct, to_trait_impl};
 
 const ALPHA_NUMERIC : u8  = 0b1100_0000u8;
 const ALPHA : u8 =          0b1000_0000u8;
@@ -10,9 +11,24 @@ const NON_WHITESPACE : u8 = 0b1101_0000u8;
 const UNCLASSIFIED : u8 =   0b0001_0000u8;
 const ANY : u8 =            0b1111_0000u8;
 
+enum Res {
+    Ok,
+    No
+}
 
-#[cfg(test)]
+struct Wow {
+    a : u8
+}
 
+trait Pattern {
+    fn consume(self, some: u8) -> Res;
+}
+
+impl Pattern for Wow {
+    fn consume(self, some: u8) -> Res {
+        return Res::Ok
+    }
+}
 
 macro_rules! pre_format_regex {
     // prev_state is empty so we're done
@@ -181,10 +197,29 @@ macro_rules! pre_check_class {
     };
 }
 
+macro_rules! body_generator {
+    ( $($types:tt)+ ) => {
+        fn consume(self, some: u8) -> Res {
+            // todo: make this actual logic
+            $(
+                self. $types .consume(some)
+            );+
+        }
+    };
+}
+
 macro_rules! regex {
-    ($($t:tt)*) => {
+    ($($regexp:tt)+) => {
         println!("Started regex");
-        pre_format_regex!(($($t)*) () ())
+
+        sample_macro!( (to_struct) (UberPattern (Pattern)) ($($regexp)+) ( (A) (B) (C) ));
+        sample_macro!( (to_trait_impl) (Pattern UberPattern (Pattern) (body_generator)) ($($regexp)+) ( (A) (B) (C) ));
+
+        UberPattern {
+             $( A: pre_format_regex!($regexp () ()) ),+
+        }
+
+
     };
 }
 
@@ -310,41 +345,6 @@ macro_rules! parse_class {
         println!("Ended char class");
         parse_regex!($($t)*)
     };
-}
-
-macro_rules! range_err {
-    ({} ($($after:tt)*) ($($before:tt)*)) => {
-        panic!("Parse error: {}: \n {}  HERE >> {{}} {}",
-            "Range may not be empty",
-            stringify!($($before)*),
-            stringify!($($after)*)
-        );
-    };
-    ({,} ($($after:tt)*) ($($before:tt)*)) => {
-        panic!("Parse error: {}: \n {} {{ HERE >> ,}} {}",
-            "Range must include a number before and/or after the comma",
-            stringify!($($before)*),
-            stringify!($($after)*)
-        );
-    };
-    ({$($stuff:tt)*} ($($after:tt)*) ($($before:tt)*)) => {
-        panic!("Parse error: {}: \n {} {{ HERE >> {} }} {}",
-            "Illegal contents of range",
-            stringify!($($before)*),
-            stringify!($($stuff)*),
-            stringify!($($after)*)
-        );
-    };
-}
-
-macro_rules! group_err {
-    () => {}
-}
-macro_rules! literal_err {
-    () => {}
-}
-macro_rules! parse_err {
-    () => {}
 }
 
 macro_rules! parse_literal {
@@ -575,7 +575,20 @@ macro_rules! reverse_custom_panic {
     };
 }
 
+
+
 #[test]
 fn wow() {
-    regex!(a []);
+
+     ////sample!( (to_struct (UberPattern ())) (one two three) ((A) (B) (C) (D)) );
+
+    regex!(
+        ( a (a ) )
+    );
+
+    UberPattern::<Wow> {
+        A: Wow {
+            a: 0u8
+        }
+    };
 }
