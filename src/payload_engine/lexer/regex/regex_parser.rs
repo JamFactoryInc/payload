@@ -11,27 +11,58 @@ struct Range {
     from: u8,
     to: u8,
 }
+impl Range {
+    fn optional() -> Range {
+        Range { from: 0, to: 1}
+    }
+    fn one() -> Range {
+        Range { from: 1, to: 1}
+    }
+}
 
 type Flag2 = u8;
 trait Flag2Trait {
+    const EMPTY : Flag2 = 0;
+    const A : Flag2 = 1;
+    const B : Flag2 = 2;
+    const AB : Flag2 = 3;
+
     fn a(self) -> bool;
+    fn only_a(self) -> bool;
     fn b(self) -> bool;
+    fn only_b(self) -> bool;
     fn a_or_b(self) -> bool;
+    fn a_xor_b(self) -> bool;
     fn a_and_b(self) -> bool;
+    fn flip(self, to_flip: Flag2);
+    fn flip_a(self);
+    fn flip_b(self);
+    fn enable_a(self);
+    fn enable_b(self);
+    fn flipped(self, to_flip: Flag2) -> Flag2;
+    fn flipped_a(self) -> Flag2;
+    fn flipped_b(self) -> Flag2;
+    fn enabled_a(self) -> Flag2;
+    fn enabled_b(self) -> Flag2;
 }
 impl Flag2Trait for Flag2 {
-    fn a(self) -> bool {
-        return self & 0b01 != 0;
-    }
-    fn b(self) -> bool {
-        return self & 0b10 != 0;
-    }
-    fn a_or_b(self) -> bool {
-        return self > 0;
-    }
-    fn a_and_b(self) -> bool {
-        return 0b11 == self;
-    }
+    #[inline] fn a(self) -> bool { self & Self::A != 0 }
+    #[inline] fn only_a(self) -> bool { self == Self::A }
+    #[inline] fn b(self) -> bool { self & Self::B != 0 }
+    #[inline] fn only_b(self) -> bool { self == Self::B }
+    #[inline] fn a_or_b(self) -> bool { self > 0 }
+    #[inline] fn a_xor_b(self) -> bool { self.only_a() || self.only_b() }
+    #[inline] fn a_and_b(self) -> bool { Self::AB == self }
+    #[inline] fn flip(mut self, to_flip: Flag2) { self ^= to_flip }
+    #[inline] fn flip_a(mut self) { self ^= Self::A }
+    #[inline] fn flip_b(mut self) { self ^= Self::B }
+    #[inline] fn enable_a(mut self) { self |= Self::A }
+    #[inline] fn enable_b(mut self) { self |= Self::B }
+    #[inline] fn flipped(self, to_flip: Flag2) -> Flag2 { self ^ to_flip }
+    #[inline] fn flipped_a(self) -> Flag2 { self ^ Self::A }
+    #[inline] fn flipped_b(self) -> Flag2 { self ^ Self::B }
+    #[inline] fn enabled_a(self) -> Flag2 { self | Self::A }
+    #[inline] fn enabled_b(self) -> Flag2 { self | Self::B }
 }
 
 type CharFlags = u8;
@@ -176,7 +207,7 @@ impl AsciiMatcher for AsciiDigits {
 enum Char {
     // a single char
     // 'a' == Char{ 97 }
-    Char(Ascii),
+    Single(Ascii),
     // a single char repeating as defined by its range, excluding Range{1,1}
     // 'a*' == RangedChar{ 97, Range { 0, 255 } }
     RepeatedChar(Ascii, Range),
@@ -238,26 +269,42 @@ enum Char {
     PartialRepeatedClass(Range),
 }
 impl Char {
-    fn from<const size: usize>(chars: [Ascii; size]) -> ([Ascii; size], usize, Char) {
+    fn from_literal<const size: usize>(chars: [Ascii; size]) -> ([Ascii; size], usize, Char) {
         match size {
-            1 ..= 6 => {
-                Sequence([chars[0], chars[1], chars[2], chars[3], chars[4], chars[5]], size)
+            1 => {
+                (
+                    [0u8; size],
+                    size,
+                    Char::Single(
+                        chars[0]
+                    ),
+                )
+            }
+            2 ..= 6 => {
+
+                let mut result_arr = [0u8; 6];
+                result_arr[..size].copy_from_slice(&chars);
+                (
+                    [0u8; size],
+                    size,
+                    Sequence(
+                        result_arr,
+                        size as u8
+                    ),
+                )
             }
             _ => {
-
+                todo!()
             }
         }
     }
-}
-
-enum GroupType {
-    Char(Char),
-    Seq([u8; 8]),
-    Literal(String),
+    fn from_class<const size: usize>(chars: [Ascii; size], range: Range) -> ([Ascii; size], usize, Char) {
+        todo!()
+    }
 }
 
 struct Group<const size: usize> {
-    sequence: [GroupType; size]
+    sequence: [Char; size]
 }
 
 trait Pattern {
@@ -267,7 +314,7 @@ trait Pattern {
 macro_rules! pre_format_regex {
     // prev_state is empty so we're done
     (() ($($processed:tt)*) () $($res:tt)*) => {
-        parse_regex!($($res)*)
+        parse_regex!(@body () $($res)*)
         //println!("{} {}", stringify!($($res)*), test!($($res)*));
     };
     // we've reached the end of a recursive call. Time to go back to its caller
@@ -408,74 +455,74 @@ macro_rules! regex {
 }
 
 macro_rules! parse_regex {
-    (# $($t:tt)*) => {
+    (@body $body:tt # $($t:tt)*) => {
         println!("Start literal");
         parse_literal!(# $($t)*)
         //parse_literal!($esc $($t)*)
     };
-    (# $esc:tt $($t:tt)*) => {
+    (@body $body:tt # $esc:tt $($t:tt)*) => {
         println!("Start literal");
         parse_literal!($esc $($t)*)
     };
-    ($esc:ident $($t:tt)*) => {
+    (@body $body:tt $esc:ident $($t:tt)*) => {
         {println!("Start literal");
         parse_literal!($esc $($t)*)}
     };
-    (($($group:tt)*) * $($t:tt)*) => {
+    (@body $body:tt ($($group:tt)*) * $($t:tt)*) => {
         println!("Repeat group *");
         println!("Start group");
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* @end $($t)*)
     };
-    (($($group:tt)*) + $($t:tt)*) => {
+    (@body $body:tt ($($group:tt)*) + $($t:tt)*) => {
         println!("Repeat group +");
         println!("Start group");
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* @end $($t)*)
     };
-    (($($group:tt)*) ? $($t:tt)*) => {
+    (@body $body:tt ($($group:tt)*) ? $($t:tt)*) => {
         println!("Repeat group ?");
         println!("Start group");
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* @end $($t)*)
     };
-    (($($group:tt)*) {$repeats:literal} $($t:tt)*) => {
+    (v ($($group:tt)*) {$repeats:literal} $($t:tt)*) => {
         println!("Repeat group {} times", $repeats);
         println!("Start group");
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* @end $($t)*)
     };
-    (($($group:tt)*) {$from:literal,$to:literal} $($t:tt)*) => {
+    (@body $body:tt ($($group:tt)*) {$from:literal,$to:literal} $($t:tt)*) => {
         println!("Repeat group from {} to {} times", $from, $to);
         println!("Start group");
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* @end $($t)*)
     };
-    ('e) => {
+    (@body $body:tt @end) => {
         {println!("Ended group");
         println!("Ended regex");}
     };
-    ('e $($t:tt)*) => {
+    (@body $body:tt @end $($t:tt)*) => {
         println!("Ended group");
         parse_regex!($($t)*)
     };
-    ([$($class:tt)*] $($t:tt)*) => {
-        parse_class!('b $($class)* 'e $($t)*)
+    (@body $body:tt [$($class:tt)*] $($t:tt)*) => {
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
-    ([$($class:tt)*] * $($t:tt)*) => {
+    (@body $body:tt [$($class:tt)*] * $($t:tt)*) => {
         println!("Repeat class *");
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
-    ([$($class:tt)*] + $($t:tt)*) => {
+    (@body $body:tt [$($class:tt)*] + $($t:tt)*) => {
         println!("Repeat class +");
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
-    ([$($class:tt)*] ? $($t:tt)*) => {
+    (@body $body:tt [$($class:tt)*] ? $($t:tt)*) => {
         println!("Repeat class ?");
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
-    ([$($class:tt)*] {$repeats:literal} $($t:tt)*) => {
+    (@body $body:tt [$($class:tt)*] {$repeats:literal} $($t:tt)*) => {
         println!("Repeat class {} times", $repeats);
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
-    ([$($class:tt)*] {$from:literal,$to:literal} $($t:tt)*) => {
+    (@body $body:tt [$($class:tt)*] {$from:literal,$to:literal} $($t:tt)*) => {
         println!("Repeat class from {} to {} times", $from, $to);
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
     () => {
 
@@ -483,215 +530,218 @@ macro_rules! parse_regex {
 }
 
 macro_rules! parse_class {
-    ('b 'e) => {
+    (@body $body:tt @class $class:tt @begin @end) => {
         panic!("Cannot have empty char class")
     };
-    ('b $($t:tt)+) => {
+    (@body $body:tt @class $class:tt @begin $($t:tt)+) => {
         println!("Start char class");
         parse_class!($($t)+)
     };
-    ('b ^ $($t:tt)+) => {
+    (@body $body:tt @class $class:tt @begin ^ $($t:tt)+) => {
         println!("Start char class inverted");
         parse_class!($($t)+)
     };
-    ($from:ident - $to:ident 'e $($t:tt)*) => {
+    (@body $body:tt @class $class:tt $from:ident - $to:ident @end $($t:tt)*) => {
         println!("Range from {} to {} {} - {}", stringify!($from), stringify!($to), ascii!($from), ascii!($to));
         println!("Ended char class");
         parse_regex!($($t)*)
     };
-    ($from:ident - $to:ident $($t:tt)+) => {
+    (@body $body:tt @class $class:tt $from:ident - $to:ident $($t:tt)+) => {
         println!("Range from {} to {} {} - {}", stringify!($from), stringify!($to), ascii!($from), ascii!($to));
         parse_class!($($t)+)
     };
-    ($id:ident $id_2:ident $id_3:ident $($t:tt)*) => {
+    (@body $body:tt @class $class:tt $id:ident $id_2:ident $id_3:ident $($t:tt)*) => {
         println!("batched char {} {}", stringify!($id), ascii!($id));
         println!("batched char {} {}", stringify!($id_2), ascii!($id_2));
         parse_class!($id_3 $($t)*)
     };
-    ($id:ident $($t:tt)*) => {
+    (@body $body:tt @class $class:tt $id:ident $($t:tt)*) => {
         println!("char {} {}", stringify!($id), ascii!($id));
         parse_class!($($t)*)
     };
-    (#$id:tt #$id_2:tt #$id_3:tt $($t:tt)*) => {
+    (@body $body:tt @class $class:tt #$id:tt #$id_2:tt #$id_3:tt $($t:tt)*) => {
         println!("batched escaped {} {}", stringify!($id), ascii_l!($id));
         println!("batched escaped {} {}", stringify!($id_2), ascii_l!($id_2));
         parse_class!($id_3 $($t)*)
     };
-    (#$lit:tt $($t:tt)*) => {
+    (@body $body:tt @class $class:tt #$lit:tt $($t:tt)*) => {
         println!("escaped {} {}", stringify!($lit), ascii_l!($lit));
         parse_class!($($t)*)
     };
-    ('e) => {
+    (@body $body:tt @class $class:tt @end) => {
         println!("Ended char class");
         println!("Ended regex");
     };
-    ('e $($t:tt)*) => {
+    (@body $body:tt @class $class:tt @end $($t:tt)*) => {
         println!("Ended char class");
         parse_regex!($($t)*)
     };
 }
 
 macro_rules! parse_literal {
-    ($($char:ident)+ # $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt $($char:ident)+ # $($t:tt)*) => {
         $(
             println!("batched char {} {}", stringify!($char), ascii!($char));
         )+
         // We can't know if the literal has a following repetition operator
         parse_literal!(# $($t)*)
     };
-    ($(#$lit:tt)+ $char:ident $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt $(#$lit:tt)+ $char:ident $($t:tt)*) => {
         $(
             println!("batched escaped {} {}", stringify!(#$lit), ascii_l!(#$lit));
         )+
         // We can't know if the char has a following repetition operator
         parse_literal!($char $($t)*)
     };
-    ($char_1:ident $char_2:ident $char_3:ident $char_4:ident $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt $char_1:ident $char_2:ident $char_3:ident $char_4:ident $($t:tt)*) => {
         println!("batched char {} {}", stringify!($char_1), ascii!($char_1));
         println!("batched char {} {}", stringify!($char_2), ascii!($char_2));
         println!("batched char {} {}", stringify!($char_3), ascii!($char_3));
         // We can't know if the 4th one has a following repetition operator
         parse_literal!($char_4 $($t)*)
     };
-    ($char_1:ident $char_2:ident $char_3:ident $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt $char_1:ident $char_2:ident $char_3:ident $($t:tt)*) => {
         println!("batched char {} {}", stringify!($char_1), ascii!($char_1));
         println!("batched char {} {}", stringify!($char_2), ascii!($char_2));
         // We can't know if the 3rd one has a following repetition operator
         parse_literal!($char_3 $($t)*)
     };
-    (#$char_1:tt #$char_2:tt #$char_3:tt #$char_4:tt $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt #$char_1:tt #$char_2:tt #$char_3:tt #$char_4:tt $($t:tt)*) => {
         println!("batched escaped {} {}", stringify!($char_1), ascii_l!($char_1));
         println!("batched escaped {} {}", stringify!($char_2), ascii_l!($char_2));
         println!("batched escaped {} {}", stringify!($char_3), ascii_l!($char_3));
         // We can't know if the 4th one has a following repetition operator
         parse_literal!($char_4 $($t)*)
     };
-    (#$char_1:tt #$char_2:tt #$char_3:tt $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt #$char_1:tt #$char_2:tt #$char_3:tt $($t:tt)*) => {
         println!("batched escaped {} {}", stringify!($char_1), ascii_l!($char_1));
         println!("batched escaped {} {}", stringify!($char_2), ascii_l!($char_2));
         // We can't know if the 3rd one has a following repetition operator
         parse_literal!($char_3 $($t)*)
     };
-    ($char:ident + $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt $char:ident + $($t:tt)*) => {
         println!("repeat char + {} {}", stringify!($char), ascii!($char));
         parse_literal!($($t)*)
     };
-    (#$esc:tt + $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt #$esc:tt + $($t:tt)*) => {
         println!("repeat escaped + {} {}", stringify!($esc), ascii_l!($esc));
         parse_literal!($($t)*)
     };
-    ($char:ident * $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt $char:ident * $($t:tt)*) => {
         println!("repeat char * {} {}", stringify!($char), ascii!($char));
         parse_literal!($($t)*)
     };
-    (#$esc:tt * $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt #$esc:tt * $($t:tt)*) => {
         println!("repeat escaped * {} {}", stringify!($esc), ascii_l!($esc));
         parse_literal!($($t)*)
     };
-    ($char:ident ? $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt $char:ident ? $($t:tt)*) => {
         println!("repeat char ? {} {}", stringify!($char), ascii!($char));
         parse_literal!($($t)*)
     };
-    (#$esc:tt ? $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt #$esc:tt ? $($t:tt)*) => {
         println!("repeat escaped ? {} {}", stringify!($esc), ascii_l!($esc));
         parse_literal!($($t)*)
     };
-    ($char:ident {$repeats:literal} $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt $char:ident {$repeats:literal} $($t:tt)*) => {
         println!("Repeat char {} ({}) {} times", stringify!($char), ascii!($char), $repeats);
         parse_literal!($($t)*)
     };
-    (#$esc:tt {$repeats:literal} $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt #$esc:tt {$repeats:literal} $($t:tt)*) => {
         println!("Repeat escaped {} ({}) {} times", stringify!($esc), ascii_l!($esc), $repeats);
         parse_literal!($($t)*)
     };
-    ($char:ident {$from:literal,$to:literal} $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt $char:ident {$from:literal,$to:literal} $($t:tt)*) => {
         println!("Repeat char {} ({}) from {} to {} times", stringify!($char), ascii!($char), $from, $to);
         parse_literal!($($t)*)
     };
-    (#$esc:tt {$from:literal,$to:literal} $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt #$esc:tt {$from:literal,$to:literal} $($t:tt)*) => {
         println!("Repeat escaped {} ({}) from {} to {} times", stringify!($esc), ascii_l!($esc), $from, $to);
         parse_literal!($($t)*)
     };
-    ($char:ident $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt $char:ident $($t:tt)*) => {
         {println!("char {} {}", stringify!($char), ascii!($char));
         parse_literal!($($t)*)}
     };
-    (#$esc:tt $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt #$esc:tt $($t:tt)*) => {
         println!("escaped {} {}", stringify!($esc), ascii_l!($esc));
         parse_literal!($($t)*)
     };
     // groups
-    (($($group:tt)*) * $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt ($($group:tt)*) * $($t:tt)*) => {
         println!("End literal");
         println!("Repeat group *");
         println!("Start group");
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* @end $($t)*)
     };
-    (($($group:tt)*) + $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt ($($group:tt)*) + $($t:tt)*) => {
         println!("End literal");
         println!("Repeat group +");
         println!("Start group");
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* @end $($t)*)
     };
-    (($($group:tt)*) ? $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt ($($group:tt)*) ? $($t:tt)*) => {
         println!("End literal");
         println!("Repeat group ?");
         println!("Start group");
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* @end $($t)*)
     };
-    (($($group:tt)*) {$repeats:literal} $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt ($($group:tt)*) {$repeats:literal} $($t:tt)*) => {
         println!("End literal");
         println!("Repeat group {} times", $repeats);
         println!("Start group");
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* @end $($t)*)
     };
-    (($($group:tt)*) {$from:literal,$to:literal} $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt ($($group:tt)*) {$from:literal,$to:literal} $($t:tt)*) => {
         println!("End literal");
         println!("Repeat group from {} to {} times", $from, $to);
         println!("Start group");
-        parse_regex!($($group)* 'e $($t)*)
+        parse_regex!($($group)* @end $($t)*)
     };
-    (($($group:tt)*) $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt ($($group:tt)*) $($t:tt)*) => {
         {println!("End literal");
         println!("Start group");
         //panic!("{}", stringify!($($group)*));
-        parse_regex!($($group)* 'e $($t)*)}
+        parse_regex!($($group)* @end $($t)*)}
     };
     // classes
-    ([$($class:tt)*] * $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt [$($class:tt)*] * $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class *");
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
-    ([$($class:tt)*] + $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt [$($class:tt)*] + $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class +");
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
-    ([$($class:tt)*] ? $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt [$($class:tt)*] ? $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class ?");
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
-    ([$($class:tt)*] {$repeats:literal} $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt [$($class:tt)*] {$repeats:literal} $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class {} times", $repeats);
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
-    ([$($class:tt)*] {$from:literal,$to:literal} $($t:tt)*) => {
+    (@body $body:tt @literal $literal:tt [$($class:tt)*] {$from:literal,$to:literal} $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class from {} to {} times", $from, $to);
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
-    ([$($class:tt)*] $($t:tt)*) => {
+    (@body ($($body:tt)*) @literal $literal:tt [$($class:tt)*] $($t:tt)*) => {
         println!("End literal");
-        parse_class!('b $($class)* 'e $($t)*)
+        parse_class!(@begin $($class)* @end $($t)*)
     };
-    () => {
+    (@body ($($body:tt)*) @literal $literal:tt) => {
         println!("End literal");
         println!("End regex");
+        Group {
+            $($body)*
+        },
     };
-    ($($t:tt)+) => {
+    (@body ($($body:tt)*) @literal $literal:tt $($t:tt)+) => {
         {println!("End literal ");
         parse_regex!($($t)+)}
     };
