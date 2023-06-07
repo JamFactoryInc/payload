@@ -1,15 +1,6 @@
-use std::fmt::Display;
 use crate::payload_engine::lexer::regex::ascii_converter::{ascii, ascii_l};
+use crate::payload_engine::lexer::regex::regex_parser::Char::Sequence;
 use crate::payload_engine::util::macros::{sample_macro, pair_macro, to_struct_body, to_struct, to_trait_impl};
-
-const ALPHA_NUMERIC : u8  = 0b1100_0000u8;
-const ALPHA : u8 =          0b1000_0000u8;
-const DIGIT : u8 =          0b0100_0000u8;
-const NON_DIGIT : u8 =      0b1011_0000u8;
-const WHITESPACE : u8 =     0b0010_0000u8;
-const NON_WHITESPACE : u8 = 0b1101_0000u8;
-const UNCLASSIFIED : u8 =   0b0001_0000u8;
-const ANY : u8 =            0b1111_0000u8;
 
 enum Res {
     Ok,
@@ -21,11 +12,242 @@ struct Range {
     to: u8,
 }
 
+type Flag2 = u8;
+trait Flag2Trait {
+    fn a(self) -> bool;
+    fn b(self) -> bool;
+    fn a_or_b(self) -> bool;
+    fn a_and_b(self) -> bool;
+}
+impl Flag2Trait for Flag2 {
+    fn a(self) -> bool {
+        return self & 0b01 != 0;
+    }
+    fn b(self) -> bool {
+        return self & 0b10 != 0;
+    }
+    fn a_or_b(self) -> bool {
+        return self > 0;
+    }
+    fn a_and_b(self) -> bool {
+        return 0b11 == self;
+    }
+}
+
+type CharFlags = u8;
+trait CharFlagsTrait {
+    const UPCASE : u8 =            0b1000_0000u8; // [A-Z]
+    const DOWNCASE : u8 =          0b0100_0000u8; // [a-z]
+    const DIGIT : u8 =             0b0010_0000u8; // \d or [0-9]
+    const WHITESPACE : u8 =        0b0001_0000u8; // \s
+    const UNCLASSIFIED : u8 =      0b0000_1000u8; // symbols or whatever else
+    const LINE_END: u8 =           0b0000_0100u8; // user-defined line terminator (usually '\n' and/or ';')
+    // these two are special and at the end since they don't match actual characters but rather spaces between them
+    const WORD_BOUNDARY: u8 =      0b0000_0010u8; // \b
+    const NON_WORD_BOUNDARY: u8 =  0b0000_0001u8; // \B
+
+    const NON_WORD : u8  =         Self::UNCLASSIFIED | Self::WHITESPACE; // \W [^A-z0-9_]
+    const NON_ALPHA : u8 =         Self::DIGIT | Self::UNCLASSIFIED | Self::WHITESPACE; // [^A-z]
+    const ALPHA : u8 =             Self::UPCASE | Self::DOWNCASE; // [A-z]
+    const NON_DIGIT : u8 =         Self::UPCASE | Self::DOWNCASE | Self::UNCLASSIFIED | Self::WHITESPACE; // \D or [^\d] or [^0-9]
+    const WORD : u8  =             Self::UPCASE | Self::DOWNCASE | Self::DIGIT; // \w or [A-z0-9_]
+    const NON_WHITESPACE : u8 =    Self::UPCASE | Self::DOWNCASE | Self::DIGIT | Self::UNCLASSIFIED; // \S
+    const ANY : u8 =               Self::UPCASE | Self::DOWNCASE | Self::DIGIT | Self::UNCLASSIFIED | Self::WHITESPACE; // .
+    const CLASSIFIED : u8 =        Self::UPCASE | Self::DOWNCASE | Self::DIGIT | Self::WHITESPACE;
+
+    fn is_any(self) -> bool;
+    fn is_line_end(self) -> bool;
+    fn is_alpha(self) -> bool;
+    fn non_alpha(self) -> bool;
+    fn is_word(self) -> bool;
+    fn non_word(self) -> bool;
+    fn is_digit(self) -> bool;
+    fn non_digit(self) -> bool;
+    fn is_whitespace(self) -> bool;
+    fn non_whitespace(self) -> bool;
+    fn is_classified(self) -> bool;
+    fn non_classified(self) -> bool;
+    fn is_word_boundary(self) -> bool;
+    fn non_word_boundary(self) -> bool;
+}
+impl CharFlagsTrait for CharFlags {
+    /// Any alphanumeric, whitespace, or otherwise-unclassified ascii character other than line-end
+    ///
+    /// `.`
+    #[inline] fn is_any(self) -> bool { self >= Self::ANY }
+    /// Any user-defined line end character
+    ///
+    /// usually `[\n;]`, `;`, or `\n`
+    #[inline] fn is_line_end(self) -> bool { self & Self::LINE_END != 0 }
+    /// Any alphabet letter, case insensitive
+    ///
+    /// `[A-z]`
+    #[inline] fn is_alpha(self) -> bool { self >= Self::ALPHA }
+    /// Any non-alphabet letter, case insensitive
+    ///
+    /// `[^A-z]`
+    #[inline] fn non_alpha(self) -> bool { self >= Self::NON_ALPHA }
+    /// Any word character
+    ///
+    /// `[A-z0-9_]`
+    #[inline] fn is_word(self) -> bool { self >= Self::WORD }
+    #[inline] fn non_word(self) -> bool { self >= Self::NON_WORD }
+    #[inline] fn is_digit(self) -> bool { self & Self::DIGIT != 0 }
+    #[inline] fn non_digit(self) -> bool { self & Self::NON_DIGIT != 0 }
+    #[inline] fn is_whitespace(self) -> bool { self & Self::WHITESPACE != 0 }
+    #[inline] fn non_whitespace(self) -> bool { self & Self::NON_WHITESPACE != 0 }
+    #[inline] fn is_classified(self) -> bool { self & Self::CLASSIFIED != 0 }
+    #[inline] fn non_classified(self) -> bool { self & Self::UNCLASSIFIED != 0 }
+    #[inline] fn is_word_boundary(self) -> bool { self == Self::WORD_BOUNDARY }
+    #[inline] fn non_word_boundary(self) -> bool { self == Self::NON_WORD_BOUNDARY }
+}
+
+type Ascii = u8;
+trait AsciiTrait {
+    const ASCII_DIGIT_BLOCK_END : usize = 63;
+    const ASCII_UPPER_BLOCK_END : usize = 95;
+    const ASCII_LOWER_BLOCK_END : usize = 127;
+    fn justify_as_digit(self) -> usize;
+    fn justify_as_upper(self) -> usize;
+    fn justify_as_lower(self) -> usize;
+    fn to_upper(self) -> Ascii;
+    fn to_lower(self) -> Ascii;
+    fn as_flag(self) -> CharFlags;
+}
+impl AsciiTrait for Ascii {
+    #[inline] fn justify_as_digit(self) -> usize {
+        1usize << (Self::ASCII_DIGIT_BLOCK_END - self as usize)
+    }
+    #[inline] fn justify_as_upper(self) -> usize {
+        1usize << (Self::ASCII_UPPER_BLOCK_END - self as usize)
+    }
+    #[inline] fn justify_as_lower(self) -> usize {
+        1usize << (Self::ASCII_LOWER_BLOCK_END - self as usize)
+    }
+    #[inline] fn to_upper(self) -> Ascii {
+        return self - 32
+    }
+    #[inline] fn to_lower(self) -> Ascii {
+        return self + 32
+    }
+    fn as_flag(self) -> CharFlags {
+        match self {
+            b'a'..=b'z' => CharFlags::DOWNCASE,
+            b'_' => CharFlags::ALPHA,
+            b'A'..=b'Z' => CharFlags::UPCASE,
+            b'0'..=b'9' => CharFlags::DIGIT,
+            b' ' | b'\t' => CharFlags::WHITESPACE,
+            _ => CharFlags::UNCLASSIFIED,
+        };
+        todo!()
+    }
+}
+
+trait AsciiMatcher {
+    fn matches(self, char: Ascii) -> bool;
+}
+
+struct AsciiDigits {
+    value: u32
+}
+struct AsciiLower {
+    value: u32
+}
+struct AsciiUpper {
+    value: u32
+}
+
+impl AsciiMatcher for AsciiLower {
+    fn matches(self, char: Ascii) -> bool {
+        char.justify_as_lower() & self.value as usize != 0
+    }
+}
+impl AsciiMatcher for AsciiUpper {
+    fn matches(self, char: Ascii) -> bool {
+        char.justify_as_upper() & self.value as usize != 0
+    }
+}
+impl AsciiMatcher for AsciiDigits {
+    fn matches(self, char: Ascii) -> bool {
+        char.justify_as_digit() & self.value as usize != 0
+    }
+}
+
 enum Char {
-    Char(u8 ),
-    Class(u8, u64),
-    RepeatedChar(u8, Range),
-    RepeatedClass(u64, Range)
+    // a single char
+    // 'a' == Char{ 97 }
+    Char(Ascii),
+    // a single char repeating as defined by its range, excluding Range{1,1}
+    // 'a*' == RangedChar{ 97, Range { 0, 255 } }
+    RepeatedChar(Ascii, Range),
+    // 3 tuples of a character & a number of times it repeats and the number of tuples
+    // advantageous as it can compress up to 765 chars in a single word
+    // but in reality there are few times characters are repeated more than twice, so it's not much
+    // more effective than a Sequence, as something like FF00FF can be encoded as either while
+    // sequences are likely faster:
+    // FF00FF == Sequence{ [70, 70, 48, 48, 70, 70], 6 } == CompressedSequence { [(70, 2), (48, 2), (70, 2)], 3 }
+    // one possible case is hardcoded binary literals if you needed to match that for some reason:
+    // 0b0000111100001111 == CompressedSequence{ (48, 1), (98, 1), (48, 4), 3 }, CompressedSequence{ (49, 4), (48, 4), (49, 4), 3 }
+    // 'aaaaabbbbccccc' == CompressedSequence{ (97, 5), (98, 4), (99, 5), 3 }
+    CompressedSequence([(Ascii, u8); 3], u8),
+    // a sequence of up to 6 back-to-back chars and a u8 indicating the length
+    // this exists because it's free memory and we might as well encode multiple characters
+    // in a single OS word
+    // FF00FF == Sequence{ [70, 70, 48, 48, 70, 70], 6 }
+    Sequence([Ascii; 6], u8),
+
+    // matches any single character
+    // a == Any or Z == Any
+    Any,
+    // matches any x characters where x is defined by the range
+    // aaaa matches Any{ Range{ 1, 4 } } and ZZZZZ matches Any Range{ 5, 6 }
+    RepeatedAny(Range),
+
+    // a class made up entirely of flags like \d, \w, \s, etc.
+    // and a bool indicating whether it's inverted
+    FlagClass(CharFlags, bool,),
+    // a class made up entirely of flags like \d, \w, \s, etc.
+    // and a bool indicating whether it's inverted
+    // repeating as defined by its range
+    RepeatedFlagClass(CharFlags, bool, Range),
+    // a class made up entirely of flags like \d, \w, \s, etc.,
+    // a bool indicating whether further classes are necessary,
+    // and a bool indicating whether it's inverted
+    PartialFlagClass(CharFlags, Flag2),
+    // a set of up to 5 possible chars,
+    // a u8 indicating the length,
+    // and a bool indicating whether it's inverted
+    ShortClass([Ascii; 5], u8, bool),
+    // a set of up to 5 possible chars,
+    // a u8 indicating the length,
+    // a bool indicating whether further classes are necessary,
+    // and a bool indicating whether it's inverted (will be the same of all joined partial classes)
+    PartialShortClass([Ascii; 5], u8, Flag2),
+
+    // for all of the following:
+    // 8 type flags,
+    // 32 ascii bits,
+    // a bool indicating further classes are necessary,
+    // and a bool indicating whether it's inverted (will be the same of all joined partial classes)
+    // these exist to match the 3 core blocks of ascii (32 - 127)
+    PartialSynNumClass(CharFlags, AsciiDigits, Flag2,),
+    PartialUpperClass(CharFlags,  AsciiUpper, Flag2,),
+    PartialLowerClass(CharFlags,  AsciiLower, Flag2,),
+
+    // used to append a range onto classes that can't fit an additional 2-byte range
+    PartialRepeatedClass(Range),
+}
+impl Char {
+    fn from<const size: usize>(chars: [Ascii; size]) -> ([Ascii; size], usize, Char) {
+        match size {
+            1 ..= 6 => {
+                Sequence([chars[0], chars[1], chars[2], chars[3], chars[4], chars[5]], size)
+            }
+            _ => {
+
+            }
+        }
+    }
 }
 
 enum GroupType {
@@ -53,28 +275,16 @@ macro_rules! pre_format_regex {
         pre_format_regex!(($($prev_todo)*) ($($prev_processed)* ($($processed)*)) ($($prev_prev_state)*) $($prev_result)* ($($res)*))
     };
     ((() $($t:tt)*) $processed:tt $prev_state:tt $($res:tt)*) => {
-        custom_panic!(
-            (($($t)*) $processed $prev_state),
-            "Empty group not permitted",
-            (())
-        )
+        compile_error!("Empty group not permitted")
     };
     // match invalid char class
     (([($($stuff:tt)*)] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
         // panic!("{}", stringify!((($($t)*) ($($processed)*) ($($prev_state)*))))
-        custom_panic!(
-            (($($t)*) ($($processed)*) ($($prev_state)*)),
-            "Char classes may not contain groups",
-            ([($($stuff)*)])
-        )
+        compile_error!("Char classes may not contain groups")
     };
     // match invalid char class
     (([{$($stuff:tt)*}] $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        custom_panic!(
-            (($($t)*) ($($processed)*) ($($prev_state)*)),
-            "Char classes may not contain ranges",
-            ([{$($stuff)*}])
-        )
+        compile_error!("Char classes may not contain ranges")
     };
     // start a new recursion since we found a group. Pass the current state into the new prev_state
     ((($($stuff:tt)*) $($t:tt)*) ($($processed:tt)*) $($res:tt)*) => {
@@ -112,35 +322,19 @@ macro_rules! pre_format_regex {
         pre_format_regex!(($($t)*) ($($processed)* $any {,$to}) $($res)* $any {0, $to})
     };
     (($any:tt {$from:literal,} $($t:tt)*) ($($processed:tt)* ) $($res:tt)*) => {
-        pre_format_regex!(($($t)*) ($($processed)* $any {$from,}) $($res)* $any {$from, 9999})
+        pre_format_regex!(($($t)*) ($($processed)* $any {$from,}) $($res)* $any {$from, 255})
     };
     (({,} $($t:tt)*) ($($processed:tt)*) $prev_state:tt $($res:tt)*) => {
-        custom_panic!(
-            (($($t)*) ($($processed)*) $prev_state),
-            "Range must have at least one bound",
-            (,) 'use_brace
-        )
+        compile_error!("Range must have at least one bound")
     };
     (({} $($t:tt)*) ($($processed:tt)*) ($($prev_state:tt)*) $($res:tt)*) => {
-        custom_panic!(
-            (($($todo)*) ($($processed)*) $prev_state),
-            "Range must not be empty",
-            ({})
-        )
+        compile_error!("Range must not be empty")
     };
     (({$($stuff:tt)*} $($t:tt)*) ($($processed:tt)*) $prev_state:tt $($res:tt)*) => {
-        custom_panic!(
-            (($($t)*) ($($processed)*) $prev_state),
-            "Illegal range contents",
-            ($($stuff)*) 'use_brace
-        )
+        compile_error!("Illegal range contents")
     };
     (([] $($t:tt)*) ($($processed:tt)*) $prev_state:tt $($res:tt)*) => {
-        custom_panic!(
-            (($($t)*) ($($processed)*) $prev_state),
-            "Empty char class not permitted",
-            ([])
-        )
+        compile_error!("Empty char class not permitted")
     };
     (([$($stuff:tt)*] $($t:tt)*) ($($processed:tt)*) $prev_state:tt $($res:tt)*) => {
         pre_check_class!( ($($stuff)*) () (($($t)*) ($($processed)*) $prev_state) );
@@ -157,49 +351,25 @@ macro_rules! pre_check_class {
     };
     // illegal caret in class
     ( (^ $($todo:tt)*) ($($processed:tt)*) $prev_state:tt ) => {
-        custom_panic!(
-            (($($todo)*) ($($processed)*) $prev_state),
-            "Illegal caret in char class",
-            (^) 'use_bracket
-        )
+        compile_error!("Illegal caret in char class")
     };
     ( ({$($stuff:tt)*} $($todo:tt)*) ($($processed:tt)*) $prev_state:tt ) => {
-        custom_panic!(
-            (($($todo)*) ($($processed)*) $prev_state),
-            "Char classes may not contain ranges",
-            ({$($stuff)*}) 'use_bracket
-        )
+        compile_error!("Char classes may not contain ranges")
     };
     ( (($($stuff:tt)*) $($todo:tt)*) ($($processed:tt)*) $prev_state:tt ) => {
-        custom_panic!(
-            (($($todo)*) ($($processed)*) $prev_state),
-            "Char classes may not contain groups",
-            (($($stuff)*)) 'use_bracket
-        )
+        compile_error!("Char classes may not contain groups")
     };
     ( ($from:ident - $to:ident $($todo:tt)*) ($($processed:tt)*) $prev_state:tt ) => {
         pre_check_class!(($($todo)*) ($($processed)* $from - $to) $prev_state )
     };
     ( (- $to:ident $($todo:tt)*) ($($processed:tt)*) $prev_state:tt) => {
-        custom_panic!(
-            (($($todo)*) ($($processed)*) $prev_state),
-            "Illegal leading '-'. Did you mean to put an character before the '-'?",
-            (- $to) 'use_bracket
-        )
+        compile_error!("Illegal leading '-'. Did you mean to put an character before the '-'?")
     };
     ( ($from:ident - $($todo:tt)*) ($($processed:tt)*) $prev_state:tt ) => {
-        custom_panic!(
-            (($($todo)*) ($($processed)*) $prev_state),
-            "Illegal trailing '-'. Did you mean to put an character after the '-'?",
-            ($from -) 'use_bracket
-        )
+        compile_error!("Illegal trailing '-'. Did you mean to put an character after the '-'?")
     };
     ( (-) () $prev_state:tt $($res:tt)*) => {
-        custom_panic!(
-            (($($todo)*) ($($processed)*) $prev_state),
-            "'-' cannot be the only content of a class",
-            (-) 'use_bracket
-        )
+        compile_error!("'-' cannot be the only content of a class")
     };
     ( ($char:ident $($todo:tt)*) ($($processed:tt)*) $prev_state:tt $($res:tt)* ) => {
         pre_check_class!(($($todo)*) ($($processed)* $char) $prev_state)
@@ -527,82 +697,14 @@ macro_rules! parse_literal {
     };
 }
 
-macro_rules! custom_panic {
-    // no prev state
-    ((($($todo:tt)*) ($($processed:tt)*) () $($garbage:tt)*), $message:literal, ($($problem:tt)*) $($use_bracket:tt)? ) => {
-        reverse_custom_panic!( (($($processed)*)) () (($($todo)*)) $message ($($use_bracket)? $($problem)*) ( $($problem)* ) )
-    };
-    // one prev state
-    ( (($($todo:tt)*) ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) () $($garbage:tt)*)), $message:literal, ($($problem:tt)*) $($use_bracket:tt)? ) => {
-        reverse_custom_panic!( (($($prev_processed)*)) ($($processed)*) (($($prev_todo)*)) $message ($($use_bracket)? $($problem)*) ($($processed)* $($problem)* $($todo)*) )
-    };
-    // more than one prev state
-    ( (($($todo:tt)*) ($($processed:tt)*) (($($prev_todo:tt)*) ($($prev_processed:tt)*) $prev_state:tt $($garbage:tt)*) $($garbage_2:tt)*), $message:literal, ($($problem:tt)*) $($use_bracket:tt)? ) => {
-        custom_panic!( $prev_state (($($prev_processed)*)) (($($prev_todo)*)) $message ($($use_bracket)? $($problem)*) ($($processed)* $($problem)* $($todo)*) () )
-    };
-
-    // prev state
-    ( (($($todo:tt)*) ($($processed:tt)*) () $($garbage:tt)*) ($($before_layers:tt)*) ($($after_layers:tt)*) $message:literal $problem:tt $constructed:tt $before_concat:tt ) => {
-        reverse_custom_panic!( (($($processed)*) $($before_layers)*) $before_concat (($($todo)*) $($after_layers)*) $message $problem $constructed )
-    };
-    // more than one prev state
-    ( (($($todo:tt)*) ($($processed:tt)*) $prev_state:tt $($garbage:tt)*) ($($before_layers:tt)*) ($($after_layers:tt)*) $message:literal $problem:tt $constructed:tt $before_concat:tt ) => {
-        custom_panic!( $prev_state (($($processed)*) $($before_layers)*) (($($todo)*) $($after_layers)*) $message $problem $constructed $before_concat )
-    };
-
-    // ($($stuff:tt)*) => {
-    //     panic!("{}", stringify!($($stuff)*))
-    // }
-
-}
-
-macro_rules! reverse_custom_panic {
-    ( (($($before:tt)*) $($before_layers:tt)+) ($($before_concat:tt)*) (($($after:tt)*) $($after_layers:tt)+) $message:literal ($('use_bracket $problem:tt)*) ($($constructed:tt)*) $($depth_counter:literal)* ) => {
-        reverse_custom_panic!(($($before_layers)+) ($($before)* $($before_concat)*) ($($after_layers)+) $message ($($problem)*) ($($before)* [$($constructed)*] $($after)*) $($depth_counter)* 1)
-    };
-    ( (($($before:tt)*) $($before_layers:tt)+) ($($before_concat:tt)*) (($($after:tt)*) $($after_layers:tt)+) $message:literal ($('use_brace $problem:tt)*) ($($constructed:tt)*) $($depth_counter:literal)* ) => {
-        reverse_custom_panic!(($($before_layers)+) ($($before)* $($before_concat)*) ($($after_layers)+) $message ($($problem)*) ($($before)* {$($constructed)*} $($after)*) $($depth_counter)* 1)
-    };
-    ( (($($before:tt)*) $($before_layers:tt)+) ($($before_concat:tt)*) (($($after:tt)*) $($after_layers:tt)+) $message:literal $problem:tt ($($constructed:tt)*) $($depth_counter:literal)* ) => {
-        reverse_custom_panic!(($($before_layers)+) ($($before)* $($before_concat)*) ($($after_layers)+) $message $problem ($($before)* ($($constructed)*) $($after)*) $($depth_counter)* 1)
-    };
-    ( (($($before:tt)*)) ($($before_concat:tt)*) (($($after:tt)*)) $message:literal ('use_brace $($problem:tt)*) ($($constructed:tt)*) $($depth_counter:literal)* ) => {
-        panic!("{}:\n{}\n{}",
-            $message,
-            stringify!($($before)* {$($constructed)*} $($after)*),
-            " ".repeat(stringify!($($before)* $($before_concat)*).len() + 3 $(+$depth_counter)*) + &"^".repeat(stringify!($($problem)*).len())
-        )
-    };
-    ( (($($before:tt)*)) ($($before_concat:tt)*) (($($after:tt)*)) $message:literal ('use_bracket $($problem:tt)*) ($($constructed:tt)*) $($depth_counter:literal)* ) => {
-        panic!("{}:\n{}\n{}",
-            $message,
-            stringify!($($before)* [$($constructed)*] $($after)*),
-            " ".repeat(stringify!($($before)* $($before_concat)*).len() + 1 $(+$depth_counter)*) + &"^".repeat(stringify!($($problem)*).len())
-        )
-    };
-    ( (($($before:tt)*)) ($($before_concat:tt)*) (($($after:tt)*)) $message:literal ($($problem:tt)*) ($($constructed:tt)*) $($depth_counter:literal)* ) => {
-        panic!("{}:\n{}\n{}",
-            $message,
-            stringify!($($before)* ($($constructed)*) $($after)*),
-            " ".repeat(stringify!($($before)* $($before_concat)*).len() + 1 $(+$depth_counter)*) + &"^".repeat(stringify!($($problem)*).len())
-        )
-    };
-}
-
 
 
 #[test]
 fn wow() {
+     //println!("{}", size_of::<usize>());
 
-     ////sample!( (to_struct (UberPattern ())) (one two three) ((A) (B) (C) (D)) );
+    // regex!(
+    //     ( [] )
+    // );
 
-    regex!(
-        ( a (a ) )
-    );
-
-    UberPattern::<Wow> {
-        A: Wow {
-            a: 0u8
-        }
-    };
 }
