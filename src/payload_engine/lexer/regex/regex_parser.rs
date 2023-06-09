@@ -1,4 +1,5 @@
-use crate::payload_engine::lexer::regex::ascii_converter::{ascii, ascii_l};
+use std::mem::size_of;
+use crate::payload_engine::lexer::regex::ascii_converter::{ascii, try_into_ident};
 use crate::payload_engine::lexer::regex::regex_parser::Char::Sequence;
 use crate::payload_engine::util::macros::{sample_macro, pair_macro, to_struct_body, to_struct, to_trait_impl};
 
@@ -205,67 +206,85 @@ impl AsciiMatcher for AsciiDigits {
 }
 
 enum Char {
-    // a single char
-    // 'a' == Char{ 97 }
+    /// a single char
+    ///
+    /// `'a' == Char{ 97 }`
     Single(Ascii),
-    // a single char repeating as defined by its range, excluding Range{1,1}
-    // 'a*' == RangedChar{ 97, Range { 0, 255 } }
+    /// a single char repeating as defined by its range, excluding Range{1,1}
+    ///
+    /// `'a*' == RangedChar{ 97, Range { 0, 255 } }`
     RepeatedChar(Ascii, Range),
-    // 3 tuples of a character & a number of times it repeats and the number of tuples
-    // advantageous as it can compress up to 765 chars in a single word
-    // but in reality there are few times characters are repeated more than twice, so it's not much
-    // more effective than a Sequence, as something like FF00FF can be encoded as either while
-    // sequences are likely faster:
-    // FF00FF == Sequence{ [70, 70, 48, 48, 70, 70], 6 } == CompressedSequence { [(70, 2), (48, 2), (70, 2)], 3 }
-    // one possible case is hardcoded binary literals if you needed to match that for some reason:
-    // 0b0000111100001111 == CompressedSequence{ (48, 1), (98, 1), (48, 4), 3 }, CompressedSequence{ (49, 4), (48, 4), (49, 4), 3 }
-    // 'aaaaabbbbccccc' == CompressedSequence{ (97, 5), (98, 4), (99, 5), 3 }
+    /// 3 tuples of a character & a number of times it repeats and the number of tuples
+    /// advantageous as it can compress up to 765 chars in a single word
+    /// but in reality there are few times characters are repeated more than twice, so it's not much
+    /// more effective than a Sequence, as something like FF00FF can be encoded as either while
+    /// sequences are likely faster:
+    ///
+    /// `FF00FF == Sequence{ [70, 70, 48, 48, 70, 70], 6 } == CompressedSequence { [(70, 2), (48, 2), (70, 2)], 3 }`
+    ///
+    /// one possible case is hardcoded binary literals if you needed to match that for some reason:
+    ///
+    /// `0b0000111100001111 == CompressedSequence{ (48, 1), (98, 1), (48, 4), 3 }, CompressedSequence{ (49, 4), (48, 4), (49, 4), 3 }`
+    ///
+    /// `'aaaaabbbbccccc' == CompressedSequence{ (97, 5), (98, 4), (99, 5), 3 }`
     CompressedSequence([(Ascii, u8); 3], u8),
-    // a sequence of up to 6 back-to-back chars and a u8 indicating the length
-    // this exists because it's free memory and we might as well encode multiple characters
-    // in a single OS word
-    // FF00FF == Sequence{ [70, 70, 48, 48, 70, 70], 6 }
+    /// a sequence of up to 6 back-to-back chars and a u8 indicating the length
+    /// this exists because it's free memory and we might as well encode multiple characters
+    /// in a single OS word
+    ///
+    /// `FF00FF == Sequence{ [70, 70, 48, 48, 70, 70], 6 }`
     Sequence([Ascii; 6], u8),
 
-    // matches any single character
-    // a == Any or Z == Any
+    /// matches any single character
+    ///
+    /// `a == Any or Z == Any`
     Any,
-    // matches any x characters where x is defined by the range
-    // aaaa matches Any{ Range{ 1, 4 } } and ZZZZZ matches Any Range{ 5, 6 }
+    /// matches any x characters where x is defined by the range
+    ///
+    /// `aaaa matches Any{ Range{ 1, 4 } } and ZZZZZ matches Any Range{ 5, 6 }`
     RepeatedAny(Range),
 
-    // a class made up entirely of flags like \d, \w, \s, etc.
-    // and a bool indicating whether it's inverted
+    /// a class made up entirely of flags like \d, \w, \s, etc.
+    /// and a bool indicating whether it's inverted
     FlagClass(CharFlags, bool,),
-    // a class made up entirely of flags like \d, \w, \s, etc.
-    // and a bool indicating whether it's inverted
-    // repeating as defined by its range
+    /// a class made up entirely of flags like \d, \w, \s, etc.
+    /// and a bool indicating whether it's inverted
+    /// repeating as defined by its range
     RepeatedFlagClass(CharFlags, bool, Range),
-    // a class made up entirely of flags like \d, \w, \s, etc.,
-    // a bool indicating whether further classes are necessary,
-    // and a bool indicating whether it's inverted
+    /// a class made up entirely of flags like \d, \w, \s, etc.,
+    /// a bool indicating whether further classes are necessary,
+    /// and a bool indicating whether it's inverted
     PartialFlagClass(CharFlags, Flag2),
-    // a set of up to 5 possible chars,
-    // a u8 indicating the length,
-    // and a bool indicating whether it's inverted
+    /// a set of up to 5 possible chars,
+    /// a u8 indicating the length,
+    /// and a bool indicating whether it's inverted
     ShortClass([Ascii; 5], u8, bool),
-    // a set of up to 5 possible chars,
-    // a u8 indicating the length,
-    // a bool indicating whether further classes are necessary,
-    // and a bool indicating whether it's inverted (will be the same of all joined partial classes)
+    /// a set of up to 5 possible chars,
+    /// a u8 indicating the length,
+    /// a bool indicating whether further classes are necessary,
+    /// and a bool indicating whether it's inverted (will be the same of all joined partial classes)
     PartialShortClass([Ascii; 5], u8, Flag2),
 
-    // for all of the following:
-    // 8 type flags,
-    // 32 ascii bits,
-    // a bool indicating further classes are necessary,
-    // and a bool indicating whether it's inverted (will be the same of all joined partial classes)
-    // these exist to match the 3 core blocks of ascii (32 - 127)
+    /// 8 type flags,
+    /// 32 ascii bits,
+    /// a bool indicating further classes are necessary,
+    /// and a bool indicating whether it's inverted (will be the same of all joined partial classes)
+    /// these exist to match the 3 core blocks of ascii (32 - 127)
     PartialSynNumClass(CharFlags, AsciiDigits, Flag2,),
+    /// 8 type flags,
+    /// 32 ascii bits,
+    /// a bool indicating further classes are necessary,
+    /// and a bool indicating whether it's inverted (will be the same of all joined partial classes)
+    /// these exist to match the 3 core blocks of ascii (32 - 127)
     PartialUpperClass(CharFlags,  AsciiUpper, Flag2,),
+    /// 8 type flags,
+    /// 32 ascii bits,
+    /// a bool indicating further classes are necessary,
+    /// and a bool indicating whether it's inverted (will be the same of all joined partial classes)
+    /// these exist to match the 3 core blocks of ascii (32 - 127)
     PartialLowerClass(CharFlags,  AsciiLower, Flag2,),
 
-    // used to append a range onto classes that can't fit an additional 2-byte range
+    /// used to append a range onto classes that can't fit an additional 2-byte range
     PartialRepeatedClass(Range),
 }
 impl Char {
@@ -309,6 +328,10 @@ struct Group<const size: usize> {
 
 trait Pattern {
     fn consume(self, some: u8) -> Res;
+}
+
+macro_rules! replace_literals {
+    () => {};
 }
 
 macro_rules! pre_format_regex {
@@ -455,18 +478,13 @@ macro_rules! regex {
 }
 
 macro_rules! parse_regex {
-    (@body $body:tt # $($t:tt)*) => {
-        println!("Start literal");
-        parse_literal!(# $($t)*)
-        //parse_literal!($esc $($t)*)
-    };
     (@body $body:tt # $esc:tt $($t:tt)*) => {
         println!("Start literal");
-        parse_literal!($esc $($t)*)
+        parse_literal!(@body $body @literal ($esc) $($t)*)
     };
     (@body $body:tt $esc:ident $($t:tt)*) => {
         {println!("Start literal");
-        parse_literal!($esc $($t)*)}
+        parse_literal!(@body $body @literal ($esc) $($t)*)}
     };
     (@body $body:tt ($($group:tt)*) * $($t:tt)*) => {
         println!("Repeat group *");
@@ -506,23 +524,23 @@ macro_rules! parse_regex {
     };
     (@body $body:tt [$($class:tt)*] * $($t:tt)*) => {
         println!("Repeat class *");
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     (@body $body:tt [$($class:tt)*] + $($t:tt)*) => {
         println!("Repeat class +");
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     (@body $body:tt [$($class:tt)*] ? $($t:tt)*) => {
         println!("Repeat class ?");
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     (@body $body:tt [$($class:tt)*] {$repeats:literal} $($t:tt)*) => {
         println!("Repeat class {} times", $repeats);
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     (@body $body:tt [$($class:tt)*] {$from:literal,$to:literal} $($t:tt)*) => {
         println!("Repeat class from {} to {} times", $from, $to);
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     () => {
 
@@ -535,11 +553,11 @@ macro_rules! parse_class {
     };
     (@body $body:tt @class $class:tt @begin $($t:tt)+) => {
         println!("Start char class");
-        parse_class!($($t)+)
+        parse_class!(@body $body @class $class $($t)+)
     };
     (@body $body:tt @class $class:tt @begin ^ $($t:tt)+) => {
         println!("Start char class inverted");
-        parse_class!($($t)+)
+        parse_class!(@body $body @class $class $($t)+)
     };
     (@body $body:tt @class $class:tt $from:ident - $to:ident @end $($t:tt)*) => {
         println!("Range from {} to {} {} - {}", stringify!($from), stringify!($to), ascii!($from), ascii!($to));
@@ -548,25 +566,25 @@ macro_rules! parse_class {
     };
     (@body $body:tt @class $class:tt $from:ident - $to:ident $($t:tt)+) => {
         println!("Range from {} to {} {} - {}", stringify!($from), stringify!($to), ascii!($from), ascii!($to));
-        parse_class!($($t)+)
+        parse_class!(@body $body @class $class $($t)+)
     };
     (@body $body:tt @class $class:tt $id:ident $id_2:ident $id_3:ident $($t:tt)*) => {
         println!("batched char {} {}", stringify!($id), ascii!($id));
         println!("batched char {} {}", stringify!($id_2), ascii!($id_2));
-        parse_class!($id_3 $($t)*)
+        parse_class!(@body $body @class $class $id_3 $($t)*)
     };
     (@body $body:tt @class $class:tt $id:ident $($t:tt)*) => {
         println!("char {} {}", stringify!($id), ascii!($id));
-        parse_class!($($t)*)
+        parse_class!(@body $body @class $class $($t)*)
     };
     (@body $body:tt @class $class:tt #$id:tt #$id_2:tt #$id_3:tt $($t:tt)*) => {
         println!("batched escaped {} {}", stringify!($id), ascii_l!($id));
         println!("batched escaped {} {}", stringify!($id_2), ascii_l!($id_2));
-        parse_class!($id_3 $($t)*)
+        parse_class!(@body $body @class $class $id_3 $($t)*)
     };
     (@body $body:tt @class $class:tt #$lit:tt $($t:tt)*) => {
         println!("escaped {} {}", stringify!($lit), ascii_l!($lit));
-        parse_class!($($t)*)
+        parse_class!(@body $body @class $class $($t)*)
     };
     (@body $body:tt @class $class:tt @end) => {
         println!("Ended char class");
@@ -579,93 +597,93 @@ macro_rules! parse_class {
 }
 
 macro_rules! parse_literal {
-    (@body $body:tt @literal $literal:tt $($char:ident)+ # $($t:tt)*) => {
-        $(
-            println!("batched char {} {}", stringify!($char), ascii!($char));
-        )+
+    (@body $body:tt @literal ($($literal:tt)*) $($char:ident)+ # $esc:tt $($t:tt)*) => {
+        // $(
+        //     println!("batched char {} {}", stringify!($char), ascii!($char));
+        // )+
         // We can't know if the literal has a following repetition operator
-        parse_literal!(# $($t)*)
+        parse_literal!(@body $body @literal ($($literal)* $($char)+ $esc) $($t)*)
     };
-    (@body $body:tt @literal $literal:tt $(#$lit:tt)+ $char:ident $($t:tt)*) => {
-        $(
-            println!("batched escaped {} {}", stringify!(#$lit), ascii_l!(#$lit));
-        )+
+    (@body $body:tt @literal ($($literal:tt)*) $(#$lit:tt)+ $char:ident $($t:tt)*) => {
+        // $(
+        //     println!("batched escaped {} {}", stringify!(#$lit), ascii_l!(#$lit));
+        // )+
         // We can't know if the char has a following repetition operator
-        parse_literal!($char $($t)*)
+        parse_literal!(@body $body @literal ($($literal)* $($lit)+ $char) $($t)*)
     };
-    (@body $body:tt @literal $literal:tt $char_1:ident $char_2:ident $char_3:ident $char_4:ident $($t:tt)*) => {
-        println!("batched char {} {}", stringify!($char_1), ascii!($char_1));
-        println!("batched char {} {}", stringify!($char_2), ascii!($char_2));
-        println!("batched char {} {}", stringify!($char_3), ascii!($char_3));
+    (@body $body:tt @literal ($($literal:tt)*) $char_1:ident $char_2:ident $char_3:ident $char_4:ident $($t:tt)*) => {
+        // println!("batched char {} {}", stringify!($char_1), ascii!($char_1));
+        // println!("batched char {} {}", stringify!($char_2), ascii!($char_2));
+        // println!("batched char {} {}", stringify!($char_3), ascii!($char_3));
         // We can't know if the 4th one has a following repetition operator
-        parse_literal!($char_4 $($t)*)
+        parse_literal!(@body $body @literal ($($literal)* $char_1 $char_2 $char_3) $char_4 $($t)*)
     };
-    (@body $body:tt @literal $literal:tt $char_1:ident $char_2:ident $char_3:ident $($t:tt)*) => {
-        println!("batched char {} {}", stringify!($char_1), ascii!($char_1));
-        println!("batched char {} {}", stringify!($char_2), ascii!($char_2));
+    (@body $body:tt @literal ($($literal:tt)*) $char_1:ident $char_2:ident $char_3:ident $($t:tt)*) => {
+        // println!("batched char {} {}", stringify!($char_1), ascii!($char_1));
+        // println!("batched char {} {}", stringify!($char_2), ascii!($char_2));
         // We can't know if the 3rd one has a following repetition operator
-        parse_literal!($char_3 $($t)*)
+        parse_literal!(@body $body @literal ($($literal)* $char_1 $char_2) $char_3 $($t)*)
     };
-    (@body $body:tt @literal $literal:tt #$char_1:tt #$char_2:tt #$char_3:tt #$char_4:tt $($t:tt)*) => {
-        println!("batched escaped {} {}", stringify!($char_1), ascii_l!($char_1));
-        println!("batched escaped {} {}", stringify!($char_2), ascii_l!($char_2));
-        println!("batched escaped {} {}", stringify!($char_3), ascii_l!($char_3));
+    (@body $body:tt @literal ($($literal:tt)*) #$char_1:tt #$char_2:tt #$char_3:tt #$char_4:tt $($t:tt)*) => {
+        // println!("batched escaped {} {}", stringify!($char_1), ascii_l!($char_1));
+        // println!("batched escaped {} {}", stringify!($char_2), ascii_l!($char_2));
+        // println!("batched escaped {} {}", stringify!($char_3), ascii_l!($char_3));
         // We can't know if the 4th one has a following repetition operator
-        parse_literal!($char_4 $($t)*)
+        parse_literal!(@body $body @literal ($($literal)* $char_1 $char_2 $char_3) $char_4 $($t)*)
     };
-    (@body $body:tt @literal $literal:tt #$char_1:tt #$char_2:tt #$char_3:tt $($t:tt)*) => {
-        println!("batched escaped {} {}", stringify!($char_1), ascii_l!($char_1));
-        println!("batched escaped {} {}", stringify!($char_2), ascii_l!($char_2));
+    (@body $body:tt @literal ($($literal:tt)*) #$char_1:tt #$char_2:tt #$char_3:tt $($t:tt)*) => {
+        // println!("batched escaped {} {}", stringify!($char_1), ascii_l!($char_1));
+        // println!("batched escaped {} {}", stringify!($char_2), ascii_l!($char_2));
         // We can't know if the 3rd one has a following repetition operator
-        parse_literal!($char_3 $($t)*)
+        parse_literal!(@body $body @literal ($($literal)* $char_1 $char_2) $char_3 $($t)*)
     };
-    (@body $body:tt @literal $literal:tt $char:ident + $($t:tt)*) => {
-        println!("repeat char + {} {}", stringify!($char), ascii!($char));
-        parse_literal!($($t)*)
+    (@body $body:tt @literal ($($literal:tt)*) $char:ident + $($t:tt)*) => {
+        // println!("repeat char + {} {}", stringify!($char), ascii!($char));
+        parse_literal!(@body $body @literal ($($literal)* $char) $($t)*)
     };
     (@body $body:tt @literal $literal:tt #$esc:tt + $($t:tt)*) => {
         println!("repeat escaped + {} {}", stringify!($esc), ascii_l!($esc));
-        parse_literal!($($t)*)
+        parse_literal!(@body $body @literal $literal $($t)*)
     };
     (@body $body:tt @literal $literal:tt $char:ident * $($t:tt)*) => {
         println!("repeat char * {} {}", stringify!($char), ascii!($char));
-        parse_literal!($($t)*)
+        parse_literal!(@body $body @literal $literal $($t)*)
     };
     (@body $body:tt @literal $literal:tt #$esc:tt * $($t:tt)*) => {
         println!("repeat escaped * {} {}", stringify!($esc), ascii_l!($esc));
-        parse_literal!($($t)*)
+        parse_literal!(@body $body @literal $literal $($t)*)
     };
     (@body $body:tt @literal $literal:tt $char:ident ? $($t:tt)*) => {
         println!("repeat char ? {} {}", stringify!($char), ascii!($char));
-        parse_literal!($($t)*)
+        parse_literal!(@body $body @literal $literal $($t)*)
     };
     (@body $body:tt @literal $literal:tt #$esc:tt ? $($t:tt)*) => {
         println!("repeat escaped ? {} {}", stringify!($esc), ascii_l!($esc));
-        parse_literal!($($t)*)
+        parse_literal!(@body $body @literal $literal $($t)*)
     };
     (@body $body:tt @literal $literal:tt $char:ident {$repeats:literal} $($t:tt)*) => {
         println!("Repeat char {} ({}) {} times", stringify!($char), ascii!($char), $repeats);
-        parse_literal!($($t)*)
+        parse_literal!(@body $body @literal $literal $($t)*)
     };
     (@body $body:tt @literal $literal:tt #$esc:tt {$repeats:literal} $($t:tt)*) => {
         println!("Repeat escaped {} ({}) {} times", stringify!($esc), ascii_l!($esc), $repeats);
-        parse_literal!($($t)*)
+        parse_literal!(@body $body @literal $literal $($t)*)
     };
     (@body $body:tt @literal $literal:tt $char:ident {$from:literal,$to:literal} $($t:tt)*) => {
         println!("Repeat char {} ({}) from {} to {} times", stringify!($char), ascii!($char), $from, $to);
-        parse_literal!($($t)*)
+        parse_literal!(@body $body @literal $literal $($t)*)
     };
     (@body $body:tt @literal $literal:tt #$esc:tt {$from:literal,$to:literal} $($t:tt)*) => {
         println!("Repeat escaped {} ({}) from {} to {} times", stringify!($esc), ascii_l!($esc), $from, $to);
-        parse_literal!($($t)*)
+        parse_literal!(@body $body @literal $literal $($t)*)
     };
     (@body $body:tt @literal $literal:tt $char:ident $($t:tt)*) => {
         {println!("char {} {}", stringify!($char), ascii!($char));
-        parse_literal!($($t)*)}
+        parse_literal!(@body $body @literal $literal $($t)*)}
     };
     (@body $body:tt @literal $literal:tt #$esc:tt $($t:tt)*) => {
         println!("escaped {} {}", stringify!($esc), ascii_l!($esc));
-        parse_literal!($($t)*)
+        parse_literal!(@body $body @literal $literal $($t)*)
     };
     // groups
     (@body $body:tt @literal $literal:tt ($($group:tt)*) * $($t:tt)*) => {
@@ -708,31 +726,31 @@ macro_rules! parse_literal {
     (@body $body:tt @literal $literal:tt [$($class:tt)*] * $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class *");
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     (@body $body:tt @literal $literal:tt [$($class:tt)*] + $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class +");
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     (@body $body:tt @literal $literal:tt [$($class:tt)*] ? $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class ?");
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     (@body $body:tt @literal $literal:tt [$($class:tt)*] {$repeats:literal} $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class {} times", $repeats);
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     (@body $body:tt @literal $literal:tt [$($class:tt)*] {$from:literal,$to:literal} $($t:tt)*) => {
         println!("End literal");
         println!("Repeat class from {} to {} times", $from, $to);
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     (@body ($($body:tt)*) @literal $literal:tt [$($class:tt)*] $($t:tt)*) => {
         println!("End literal");
-        parse_class!(@begin $($class)* @end $($t)*)
+        parse_class!(@body $body @class () @begin $($class)* @end $($t)*)
     };
     (@body ($($body:tt)*) @literal $literal:tt) => {
         println!("End literal");
@@ -747,10 +765,11 @@ macro_rules! parse_literal {
     };
 }
 
-
-
 #[test]
 fn wow() {
+
+    println!("{}", size_of::<Char>())
+
      //println!("{}", size_of::<usize>());
 
     // regex!(
