@@ -1,7 +1,6 @@
 use proc_macro::TokenStream;
 use std::str::Chars;
 use crate::ClassEntry::Range;
-use patterns::patterns::Matcher;
 use crate::GroupEntry::SubGroup;
 
 
