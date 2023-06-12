@@ -13,4 +13,5 @@ pub enum Types {
     String,
     Pointer,
     Reference,
+    UserDefined(usize)
 }
