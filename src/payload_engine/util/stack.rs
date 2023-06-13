@@ -1,41 +1,65 @@
 use std::ops::Deref;
+use std::thread::current;
 
-struct Stack<'a, T> {
-    temp_top: &'a mut StackNode<'a, T>,
-    top: Option<&'a mut StackNode<'a, T>>,
-    current: StackNode<'a, T>,
+struct Stack<T> {
+    top: Option<*const StackNode<T>>,
+    current: StackNode<T>,
     cursor: usize
 }
 
-struct StackNode<'a, T> {
+struct StackNode<T> {
     contents: [Option<T>; 8],
-    next: Option<&'a StackNode<'a, T>>
+    next: Option<*const StackNode<T>>
 }
 
-impl<'a, T> Stack<'a, T> {
+impl<T> Stack<T> {
     fn pop(&mut self) -> T {
         todo!();
     }
 
-    fn get_new_stack(&mut self) {
-        self.temp_top = &mut StackNode {
+    fn new_stack_node() -> *mut StackNode<T> {
+        &mut StackNode {
             contents: [None, None, None, None, None, None, None, None],
             next: None
-        }
+        } as *mut StackNode<T>
     }
-    fn push_mov(&mut self, val: T) {
+    fn push_mov(&mut self, val: T) -> Self<> {
         if self.cursor >= 8 {
-            self.get_new_stack();
+            Self::new_stack_node();
 
             match &mut self.top {
                 Some(top) => {
-                    std::mem::swap(*top, self.());
+                    self.current.next = Some(*top);
+                    self.top = Some(&self.current as *const StackNode<T>);
+                    self.current = StackNode {
+                        contents: [None, None, None, None, None, None, None, None],
+                        next: None
+                    }
                 },
                 None => todo!()
             }
 
         }
         todo!()
+    }
+}
+
+impl<T> Drop for Stack<T> {
+    fn drop(&mut self) {
+        self
+    }
+}
+
+struct Residual<T> {
+    owner: *const Stack<T>
+    resident : Option<T>,
+    refugee: Option<T>
+}
+impl<T> Drop for Residual<T> {
+    fn drop(&mut self) {
+        if let Some(resident) = self.resident.take() {
+
+        }
     }
 }
 
