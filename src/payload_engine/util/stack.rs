@@ -1,4 +1,7 @@
+use std::ops::Deref;
+
 struct Stack<'a, T> {
+    temp_top: &'a mut StackNode<'a, T>,
     top: Option<&'a mut StackNode<'a, T>>,
     current: StackNode<'a, T>,
     cursor: usize
@@ -11,27 +14,28 @@ struct StackNode<'a, T> {
 
 impl<'a, T> Stack<'a, T> {
     fn pop(&mut self) -> T {
-        todo!()
+        todo!();
     }
-    fn push(&mut self, val: T) {
+
+    fn get_new_stack(&mut self) {
+        self.temp_top = &mut StackNode {
+            contents: [None, None, None, None, None, None, None, None],
+            next: None
+        }
+    }
+    fn push_mov(&mut self, val: T) {
         if self.cursor >= 8 {
-            let new_top = &mut StackNode {
-                contents: [None, None, None, None, None, None, None, None],
-                next: None
-            };
+            self.get_new_stack();
+
             match &mut self.top {
                 Some(top) => {
-                    std::mem::swap(*top, new_top);
-                    top.next = Some(new_top)
+                    std::mem::swap(*top, self.());
                 },
                 None => todo!()
             }
 
-
-
-
-            todo!()
         }
+        todo!()
     }
 }
 
