@@ -153,14 +153,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
 
 [[package]]
-name = "payload_proc"
-version = "0.1.0"
-dependencies = [
- "shared",
-]
-
-[[package]]
-name = "payload_r"
+name = "payload"
 version = "0.1.0"
 dependencies = [
  "const_format",
@@ -168,6 +161,13 @@ dependencies = [
  "paste",
  "payload_proc",
  "rand",
+ "shared",
+]
+
+[[package]]
+name = "payload_proc"
+version = "0.1.0"
+dependencies = [
  "shared",
 ]
 
