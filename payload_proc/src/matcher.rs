@@ -8,13 +8,13 @@ pub(crate) enum MatcherType {
     Alphanumeric,
     Ident,
     Numeric,
-    Range{ from: u8, to: u8 },
+    Range,
     Hex,
     Digit,
-    Integer{ size: u16, signed: bool, base: u16 },
-    Decimal{ size: u16, signed: bool, base: u16 },
-    Literal(String),
-    Symbol(String),
+    Integer,
+    Decimal,
+    Literal,
+    Symbol,
     Set,
     Flag,
     Enum,
@@ -24,5 +24,12 @@ pub(crate) enum MatcherType {
     Enclose,
     Balance,
     Repeat,
-    UserDefined(String)
+    UserDefined
+}
+impl TryFrom<String> for MatcherType {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        todo!()
+    }
 }

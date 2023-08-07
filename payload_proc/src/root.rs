@@ -19,6 +19,10 @@ impl Root {
         self.branches.push(root)
     }
 
+    pub(crate) fn extend(&mut self, root: Root) {
+        self.branches.extend(root.branches)
+    }
+
     pub(crate) fn add_arg(&mut self, arg: Expr) {
         self.args.push(arg)
     }
