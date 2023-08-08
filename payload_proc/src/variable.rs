@@ -1,5 +1,4 @@
 
-pub(crate) struct Variable {
-    name: String,
-
+pub(crate) enum Variable {
+    Match
 }

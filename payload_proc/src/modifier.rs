@@ -1,6 +1,6 @@
 use crate::modifier::ModifierType::*;
 
-const DEFAULT_ERROR: Result<ModifierType, String> = Err(r#"
+const DEFAULT_ERROR: &str = r#"
 Expected valid modifier name. Possible values:
  - @link: tells Payload to look for additional source text at the given path
  - @visibility: allows one path to view the available symbols in another
@@ -13,9 +13,9 @@ Expected valid modifier name. Possible values:
  - @symbol: defines a symbol visible to a given scope that can be matched against
  - @error: override the default error message emitted by payload for this context
  - @ignore: marks any valid match for the given matcher to be ignored unless otherwise marked as @exact
- - @exact: disables @ignore within a block
- - @!exact: re-enables @ignore within an @exact block
-"#.to_string());
+ - @loost: disables @ignore within a block
+ - @strict: re-enables @ignore within an @exact block
+"#;
 
 pub(crate) enum ModifierType {
     Visibility,
@@ -29,8 +29,8 @@ pub(crate) enum ModifierType {
     Symbol,
     Error,
     Ignore,
-    Exact,
-    NotExact,
+    Strict,
+    Loose,
 }
 impl TryFrom<String> for ModifierType {
     type Error = String;
@@ -48,25 +48,24 @@ impl TryFrom<String> for ModifierType {
             "symbol" => Ok(Symbol),
             "error" => Ok(Error),
             "ignore" => Ok(Ignore),
-            "exact" => Ok(Exact),
-            "!exact" => Ok(NotExact),
+            "strict" => Ok(Strict),
+            "loose" => Ok(Loose),
             str => {
                 if str.len() == 0 {
-                    return DEFAULT_ERROR
+                    return Err(DEFAULT_ERROR.to_string())
                 }
                 Err( format!("Did you mean {}?", match str.as_bytes()[0] {
-                    b'l' => "link",
+                    b'l' => "link or loose",
                     b'v' => "visibility",
                     b't' => "type",
                     b'b' => "bind",
                     b'm' => "map",
                     b'p' => "preprocess or postprocess",
                     b'n' => "naive",
-                    b's' => "symbol",
-                    b'e' => "error or exact",
+                    b's' => "symbol or strict",
+                    b'e' => "error",
                     b'i' => "ignore",
-                    b'!' => "!exact",
-                    _ => return DEFAULT_ERROR
+                    _ => return Err(DEFAULT_ERROR.to_string())
                 }))
 
             }

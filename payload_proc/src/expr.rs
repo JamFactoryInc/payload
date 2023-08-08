@@ -1,4 +1,5 @@
 use crate::parse::ParseResult;
+use crate::variable::Variable;
 
 pub(crate) enum Expr {
     None,
@@ -7,16 +8,23 @@ pub(crate) enum Expr {
     Prefix(ExprOperator, Box<Expr>),
     String(String),
     Int(String),
+    Variable(Variable),
 }
 impl Default for Expr {
     fn default() -> Self {
         Expr::None
     }
 }
+impl TryFrom<String> for Expr {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        todo!()
+    }
+}
 
 pub(crate) enum ExprOperator {
     Assign,
-
 }
 
 pub(crate) struct ExprParser {
