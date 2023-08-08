@@ -90,6 +90,7 @@ impl<'a> ParserArena<'a> {
 
     pub(crate) fn parse(&mut self, char: u8) -> ParseResult {
         match &mut self.parsers.get(self.parser_index.clone()) {
+            None => ParseError(format!("Unexpected internal error [code 3:{}:{}]", self.parsers.len(), self.parser_index)),
             Some(parser) => match parser.parse(char) {
                 Parsed => match &parser.parent_parser_index {
                     Some(parent_index) => {
@@ -97,11 +98,10 @@ impl<'a> ParserArena<'a> {
                         match &self.current_root.parent {
                             Some(i) => {
                                 self.current_root = &mut self.roots[i.clone()];
+                                Continue
                             }
-                            None =>
+                            None => ParseError("Unexpected internal error [code 4]".to_string()),
                         }
-
-                        Continue
                     }
                     None => {
                         Parsed
@@ -118,16 +118,15 @@ impl<'a> ParserArena<'a> {
                         parent: Some(self.current_root.index.clone()),
                         index: self.current_root.branches.len(),
                     };
-                    self.current_root.branches.push(BranchValue::Root(new_root));
-                    self.current_root = match &mut self.current_root.branches.get(self.current_root.branches.len() - 1) {
-                        Some(BranchValue::Root(mut root)) => &mut root,
-                        _ => return ParseError("Unexpected internal error [code 2]".to_string()),
-                    };
+
+                    self.current_root.branches.push(BranchValue::Root(new_root.index.clone()));
+                    self.roots.push(new_root);
+                    self.current_root = &mut self.roots.last().unwrap();
+
                     self.parsers.push(RootParser {
                         state: ParseState::Root,
                         root_type: ParsingRootType::Root,
                         parent_parser_index: Some(self.parser_index.clone()),
-                        prefix_type: None,
                     });
                     self.parser_index = self.parsers.len() - 1;
                     Continue
@@ -171,7 +170,6 @@ impl<'a> ParserArena<'a> {
                     }
                 }
             }
-            None => ParseError(format!("Unexpected internal error [code 3:{}:{}]", self.parsers.len(), self.parser_index))
         }
     }
 }
@@ -184,14 +182,12 @@ pub(crate) struct RootParser {
     state: ParseState,
     root_type: ParsingRootType,
     parent_parser_index: Option<usize>,
-    prefix_type: Option<ParsingRootType>,
 }
 impl RootParser {
     pub(crate) fn new() -> RootParser {
         RootParser {
             state: ParseState::Root,
             root_type: ParsingRootType::Root,
-            prefix_type: None,
             parent_parser_index: None,
         }
     }
@@ -281,10 +277,7 @@ impl RootParser {
                 self.state = ParseState::Root;
                 Defer
             }
-            b'}' => {
-                // we're done
-                Parsed(())
-            }
+            b'}' => Parsed,
             _ => ParseError("Illegal character at start of expression. Expected `@` | `#` | `{` | `//` | `\"`".to_string())
         }
     }
@@ -422,13 +415,13 @@ impl RootParser {
     fn awaiting_arg_or_end(&mut self, char: u8) -> ParseResult {
         match char {
             b' ' | b'\n' | b'\r' | b'\t' => Continue,
+            b'"' => {
+                self.state = ParseState::AccumulatingString(StringAccumulatorPurpose::Parameter);
+                Continue
+            }
             b'(' => {
                 self.state = ParseState::AccumulatingExpr(1);
                 Accumulate
-            }
-            b'"' => {
-                self.state = ParseState::AwaitingDelimOrArgsEnd;
-                Defer(ParseState::AccumulatingString(StringAccumulatorPurpose::Parameter))
             }
             _ => {
                 self.state = ParseState::AccumulatingExpr(0);

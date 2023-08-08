@@ -32,6 +32,7 @@ impl Default for Root {
             root_type: RootType::Root,
             args: Vec::new(),
             parent: None,
+            index: 0,
         }
     }
 }
