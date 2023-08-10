@@ -2,6 +2,7 @@
 #![feature(try_trait_v2)]
 
 use proc_macro::TokenStream;
+use crate::parse::parent::ParserArena;
 
 pub(crate) mod matcher;
 pub(crate) mod modifier;
@@ -16,4 +17,15 @@ pub fn regex(input: TokenStream) -> TokenStream {
 
 
     input
+}
+
+#[test]
+fn test() {
+    let input = r#"
+    @link
+    "#;
+
+    let parser = ParserArena::new();
+
+    parser.parse()
 }

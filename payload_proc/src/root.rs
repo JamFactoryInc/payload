@@ -18,7 +18,6 @@ pub(crate) struct Root {
     pub(crate) root_type: RootType,
     pub(crate) args: Vec<Expr>,
     pub(crate) parent: Option<usize>,
-    pub(crate) index: usize,
 }
 impl Root {
     pub(crate) fn add_arg(&mut self, arg: Expr) {
@@ -32,7 +31,6 @@ impl Default for Root {
             root_type: RootType::Root,
             args: Vec::new(),
             parent: None,
-            index: 0,
         }
     }
 }

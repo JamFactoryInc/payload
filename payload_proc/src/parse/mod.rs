@@ -1,6 +1,6 @@
 use crate::parse::expr::Expr;
 
-mod parent;
+pub mod parent;
 mod state_parsers;
 pub mod expr;
 
@@ -28,14 +28,14 @@ pub(crate) enum ParseResult {
 }
 
 #[derive(Clone)]
-enum StringAccumulatorPurpose {
+pub(crate) enum StringAccumulatorPurpose {
     MatcherLiteral,
     WithinExpression(usize),
     Parameter,
 }
 
 #[derive(PartialEq, Clone)]
-enum ParsingRootType {
+pub(crate) enum ParsingRootType {
     // the parser began after its parent found {
     Block,
     // the parser began after its parent found #
@@ -49,7 +49,7 @@ enum ParsingRootType {
 // signifies what it just found
 // e.g. after parsing '$', would be `PrefixVariable`
 #[derive(Clone)]
-enum ParseState {
+pub(crate) enum ParseState {
     LineCommentStart,
     LineComment(Box<ParseState>),
     Prefix(ParsingRootType),

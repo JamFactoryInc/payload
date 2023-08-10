@@ -2,14 +2,45 @@ use std::cell::RefCell;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::{mem, ptr};
+use std::ffi::c_uint;
 use std::io::Read;
 use std::ops::{ControlFlow, Deref, FromResidual, Try};
+use std::pin::Pin;
 use crate::matcher::MatcherType;
 use crate::modifier::ModifierType;
-use crate::parse::ParseResult;
+use crate::parse::{AccumulatorRepr, ParseResult, ParseState, ParsingRootType};
+use crate::parse::expr::Expr;
 use crate::parse::ParseResult::*;
 use crate::parse::state_parsers::RootParser;
 use crate::root::{BranchValue, Root, RootType};
+
+enum ParsedByteReturnIndication {
+    Continue,
+    Return,
+    Error(String)
+}
+impl From<ParseResult> for ParsedByteReturnIndication {
+    fn from(value: ParseResult) -> Self {
+        match value {
+            ParseError(msg) => Self::Error(msg),
+            _ => Self::Continue,
+        }
+    }
+}
+
+impl<A> FromResidual<Result<A, String>> for ParsedByteReturnIndication {
+    fn from_residual(residual: Result<A, String>) -> Self {
+        match residual {
+            Ok(_) => Self::Continue,
+            Err(msg) => Self::Error(msg)
+        }
+    }
+}
+
+struct CachedVec<T> {
+    vec: Vec<T>,
+    item: Box<Pin<T>>,
+}
 
 pub(crate) struct ParserArena {
     accumulator: String,
@@ -19,140 +50,156 @@ pub(crate) struct ParserArena {
     parser_index: usize,
 }
 impl ParserArena {
+
+    pub fn new() -> ParserArena {
+        let root = Root {
+            branches: vec![],
+            root_type: RootType::Root,
+            args: vec![],
+            parent: None,
+        };
+        let root_parser = RootParser {
+            state: ParseState::LineCommentStart,
+            root_type: ParsingRootType::Block,
+            parent_parser_index: None,
+        };
+        ParserArena {
+            accumulator: String::new(),
+            roots: vec![root],
+            current_root_index: 0,
+            parsers: vec![root_parser],
+            parser_index: 0,
+        }
+    }
+
     /// swaps the pointer of self.accumulator with a pointer to an equal-capacity empty string
     /// basically self.accumulator.clone() and self.accumulator.clear() in one
-    fn use_accumulator(&mut self) -> String {
-        let mut to_be_swapped = String::with_capacity(self.accumulator.capacity());
-        mem::swap(&mut self.accumulator, &mut to_be_swapped);
+    fn use_accumulator(accumulator: &mut String) -> String {
+        let mut to_be_swapped = String::with_capacity(accumulator.capacity());
+        mem::swap(accumulator, &mut to_be_swapped);
         to_be_swapped
     }
 
-    pub(crate) fn parse(&mut self, source: &[u8]) -> Result<&Vec<Root>, String> {
-        let mut current_parser = self.parsers.first().unwrap();
-        let mut current_root = &self.roots[self.current_root_index.clone()];
-        for byte in source {
-            match match current_parser.parse(byte) {
-                ParseError(msg) => Some(Err(msg)),
-                Accumulate => {
-                    self.accumulator.push(char::from(byte.clone()));
-                    None
-                }
-                ParseAccumulated(_) => {
-
-                }
-                Continue => None,
-                Defer => {}
-                Parsed => {}
-                ParsedExpr(_) => {}
-            } {
-                Some(Ok(())) => return Ok(&self.roots),
-                Some(Err(msg)) => return Err(msg),
-                None => {}
-            }
+    fn handle_parsed(current_parser_index: &mut usize,
+                     current_root_index: &mut usize,
+                     parsers: &mut Vec<RootParser>,
+                     roots: &mut Vec<Root>,
+    ) -> ParsedByteReturnIndication {
+        match (&parsers[current_parser_index.clone()].parent_parser_index, &roots[current_root_index.clone()].parent) {
+            (
+                Some(parser_index), Some(root_index)
+            ) => {
+                *current_parser_index = parser_index.clone();
+                *current_root_index = root_index.clone();
+                ParsedByteReturnIndication::Continue
+            },
+            _ => ParsedByteReturnIndication::Return
         }
+    }
 
-        let parsed = || {
-            match (&current_parser.parent_parser_index, &current_root.parent) {
-                (
-                    Some(parser_index), Some(root_index)
-                ) => {
-                    current_parser = &self.parsers[parser_index.clone()];
-                    current_root = &self.roots[root_index.clone()];
-                    None
-                },
-                _ => Some(Ok(()))
+    fn handle_parse_accumulated(current_root_index: &mut usize,
+                                roots: &mut Vec<Root>,
+                                accumulator: &mut String,
+                                accumulator_repr: AccumulatorRepr
+    ) -> ParsedByteReturnIndication {
+        let current_root = &mut roots[current_root_index.clone()];
+        match accumulator_repr {
+            AccumulatorRepr::Expression => current_root.args.push(
+                Expr::try_from(Self::use_accumulator(accumulator))?
+            ),
+            AccumulatorRepr::MatcherName => current_root.root_type = RootType::Matcher(
+                MatcherType::try_from(Self::use_accumulator(accumulator))?
+            ),
+            AccumulatorRepr::ModifierName => current_root.root_type = RootType::Modifier(
+                ModifierType::try_from(Self::use_accumulator(accumulator))?
+            ),
+            AccumulatorRepr::MatcherLiteral => {
+                current_root.root_type = RootType::Matcher(MatcherType::Literal);
+                current_root.args.push(Expr::String(Self::use_accumulator(accumulator)));
+            }
+            AccumulatorRepr::RustSrc => {
+                current_root.branches.push(BranchValue::Source(Self::use_accumulator(accumulator)));
+            }
+        };
+        ParsedByteReturnIndication::Continue
+    }
+
+    fn handle_defer(
+        current_parser_index: &mut usize,
+        current_root_index: &mut usize,
+        roots: &mut Vec<Root>,
+        parsers: &mut Vec<RootParser>,
+    ) -> ParsedByteReturnIndication {
+        let len = roots.len();
+        let current_root = &mut roots[current_root_index.clone()];
+        let new_root = Root {
+            branches: Vec::new(),
+            root_type: RootType::Root,
+            args: Vec::new(),
+            parent: Some(current_root_index.clone()),
+        };
+
+        current_root.branches.push(BranchValue::Root(len.clone()));
+        *current_root_index = roots.len();
+        roots.push(new_root);
+
+
+        parsers.push(RootParser {
+            state: ParseState::Root,
+            root_type: ParsingRootType::Root,
+            parent_parser_index: Some(current_parser_index.clone()),
+        });
+        *current_parser_index = parsers.len() - 1;
+
+        ParsedByteReturnIndication::Continue
+    }
+
+    fn parse_with(current_parser_index: &mut usize,
+                  current_root_index: &mut usize,
+                  parsers: &mut Vec<RootParser>,
+                  roots: &mut Vec<Root>,
+                  accumulator: &mut String,
+                  byte: &u8,
+    ) -> ParsedByteReturnIndication {
+
+        match parsers[current_parser_index.clone()].parse(byte) {
+            Defer => Self::handle_defer(current_parser_index, current_root_index, roots, parsers),
+            Parsed => Self::handle_parsed(current_parser_index, current_root_index, parsers, roots),
+            ParseAccumulated(accumulator_repr) =>
+                Self::handle_parse_accumulated(current_root_index, roots, accumulator, accumulator_repr),
+            Accumulate => {
+                accumulator.push(char::from(byte.clone()));
+                ParsedByteReturnIndication::Continue
+            }
+            result => ParsedByteReturnIndication::from(result),
+        }
+    }
+
+    pub(crate) fn parse(&mut self, source: &[u8]) -> Result<&Vec<Root>, String> {
+        let ParserArena {
+                ref mut accumulator,
+                ref mut roots,
+                ref mut current_root_index,
+                ref mut parsers,
+                ref mut parser_index
+            } = self;
+        for byte in source {
+            let result = Self::parse_with(
+                parser_index,
+                current_root_index,
+                parsers,
+                roots,
+                accumulator,
+                byte
+            );
+            match result {
+                ParsedByteReturnIndication::Return => return Ok(&self.roots),
+                ParsedByteReturnIndication::Error(msg) => return Err(msg),
+                ParsedByteReturnIndication::Continue => ()
             }
         };
 
-        let parse_accumulated = ||
 
         todo!()
-    }
-
-
-
-    pub(crate) fn parse_byte(&mut self, root_parser: &mut RootParser, current_root: & Root, char: &u8) -> ParseResult {
-        match root_parser.parse(char) {
-            None => ParseError(format!("Unexpected internal error [code 3:{}:{}]", self.parsers.len(), self.parser_index)),
-            Some(parser) => match parser.parse(char) {
-                Parsed => match &parser.parent_parser_index {
-                    Some(parent_index) => {
-                        self.parser_index = parent_index.clone();
-                        match &current_root.parent {
-                            Some(i) => {
-                                self.current_root_index = i.clone();
-                                Continue
-                            }
-                            None => ParseError("Unexpected internal error [code 4]".to_string()),
-                        }
-                    }
-                    None => {
-                        Parsed
-                    }
-                }
-                Continue => Continue,
-                ParseError(err) => ParseError(err),
-                ParsedExpr(_) => ParseError("Unexpected internal error [code 1]".to_string()),
-                Defer => {
-                    let new_root = Root {
-                        branches: Vec::new(),
-                        root_type: RootType::Root,
-                        args: Vec::new(),
-                        parent: Some(self.current_root.index.clone()),
-                        index: self.current_root.branches.len(),
-                    };
-
-                    self.current_root.branches.push(BranchValue::Root(new_root.index.clone()));
-                    self.roots.push(new_root);
-                    self.current_root = &mut self.roots.last().unwrap();
-
-                    self.parsers.push(RootParser {
-                        state: ParseState::Root,
-                        root_type: ParsingRootType::Root,
-                        parent_parser_index: Some(self.parser_index.clone()),
-                    });
-                    self.parser_index = self.parsers.len() - 1;
-                    Continue
-                }
-                Accumulate => {
-                    self.accumulator.push(char::from(char.clone()));
-                    Continue
-                }
-                ParseAccumulated(accumulator_repr) => {
-                    match accumulator_repr {
-                        AccumulatorRepr::Expression => match Expr::try_from(self.use_accumulator()) {
-                            Ok(expr) => {
-                                self.current_root.args.push(expr);
-                                Continue
-                            }
-                            Err(msg) => ParseError(msg)
-                        }
-                        AccumulatorRepr::MatcherName => match MatcherType::try_from(self.use_accumulator()) {
-                            Ok(matcher_type) => {
-                                self.current_root.root_type = RootType::Matcher(matcher_type);
-                                Continue
-                            },
-                            Err(msg) => ParseError(msg),
-                        }
-                        AccumulatorRepr::ModifierName => match ModifierType::try_from(self.use_accumulator()) {
-                            Ok(modifier_type) => {
-                                self.current_root.root_type = RootType::Modifier(modifier_type);
-                                Continue
-                            },
-                            Err(msg) => ParseError(msg),
-                        }
-                        AccumulatorRepr::MatcherLiteral => {
-                            self.current_root.root_type = RootType::Matcher(MatcherType::Literal);
-                            self.current_root.args.push(Expr::String(self.use_accumulator()));
-                            Continue
-                        }
-                        AccumulatorRepr::RustSrc => {
-                            self.current_root.branches.push(BranchValue::Source(self.use_accumulator()));
-                            Continue
-                        }
-                    }
-                }
-            }
-        }
     }
 }
