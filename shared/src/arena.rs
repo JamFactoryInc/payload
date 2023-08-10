@@ -23,7 +23,7 @@ impl<'a, T: Sized> Arena<'a, T> {
             size_of::<T>(),
             8
         ).unwrap();
-        let block = Self::alloc(&layout)?;
+        let block = Self::alloc(&layout).unwrap();
         Ok(Arena {
             _phantom: Default::default(),
             block,
@@ -61,7 +61,7 @@ impl<'a, T> Drop for Arena<'a, T> {
     fn drop(&mut self) {
         unsafe {
             for ptr in self.blocks.iter() {
-                dealloc(*ptr, self.layout.repeat_packed(128).unwrap())
+                //dealloc(*ptr, self.layout.repeat_packed(128).unwrap())
             }
         }
     }

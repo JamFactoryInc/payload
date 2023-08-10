@@ -8,7 +8,6 @@ pub(crate) mod modifier;
 pub(crate) mod product;
 pub(crate) mod root;
 pub(crate) mod parse;
-mod expr;
 mod variable;
 
 
