@@ -1,6 +1,7 @@
 use crate::parse::ParseResult;
 use crate::variable::Variable;
 
+#[derive(Debug)]
 pub(crate) enum Expr {
     None,
     Binary(Box<Expr>, ExprOperator, Box<Expr>),
@@ -23,6 +24,7 @@ impl TryFrom<String> for Expr {
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum ExprOperator {
     Assign,
 }

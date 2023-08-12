@@ -27,14 +27,14 @@ pub(crate) enum ParseResult {
     ParsedExpr(Expr)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum StringAccumulatorPurpose {
     MatcherLiteral,
     WithinExpression(usize),
     Parameter,
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub(crate) enum ParsingRootType {
     // the parser began after its parent found {
     Block,
@@ -48,15 +48,15 @@ pub(crate) enum ParsingRootType {
 
 // signifies what it just found
 // e.g. after parsing '$', would be `PrefixVariable`
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum ParseState {
     LineCommentStart,
     LineComment(Box<ParseState>),
     Prefix(ParsingRootType),
-    Identifier,
-    ArgsEnd,
+    Identifier(ParsingRootType),
     AwaitingArgOrArgsEnd,
     AwaitingDelimOrArgsEnd,
+    AwaitingRootOrArgsBegin,
     // we're building an expression (usually a parameter)
     // accepts a depth for tracking parentheses
     AccumulatingExpr(usize),

@@ -25,7 +25,8 @@ fn test() {
     @link
     "#;
 
-    let parser = ParserArena::new();
+    let mut parser = ParserArena::new();
 
-    parser.parse()
+    let parse_result = parser.parse(input.as_bytes());
+    println!("{:?}", parse_result)
 }

@@ -17,6 +17,7 @@ Expected valid modifier name. Possible values:
  - @strict: re-enables @ignore within an @exact block
 "#;
 
+#[derive(Debug)]
 pub(crate) enum ModifierType {
     Visibility,
     Link,

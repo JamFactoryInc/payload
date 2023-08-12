@@ -1,5 +1,6 @@
 use crate::root::Root;
 
+#[derive(Debug)]
 pub(crate) enum MatcherType {
     Space,
     Alpha,

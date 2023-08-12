@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::{mem, ptr};
+use std::collections::HashMap;
 use std::ffi::c_uint;
 use std::io::Read;
 use std::ops::{ControlFlow, Deref, FromResidual, Try};
@@ -12,7 +13,7 @@ use crate::parse::{AccumulatorRepr, ParseResult, ParseState, ParsingRootType};
 use crate::parse::expr::Expr;
 use crate::parse::ParseResult::*;
 use crate::parse::state_parsers::RootParser;
-use crate::root::{BranchValue, Root, RootType};
+use crate::root::{BranchValue, Root, RootCollection, RootType};
 
 enum ParsedByteReturnIndication {
     Continue,
@@ -50,7 +51,6 @@ pub(crate) struct ParserArena {
     parser_index: usize,
 }
 impl ParserArena {
-
     pub fn new() -> ParserArena {
         let root = Root {
             branches: vec![],
@@ -59,7 +59,7 @@ impl ParserArena {
             parent: None,
         };
         let root_parser = RootParser {
-            state: ParseState::LineCommentStart,
+            state: ParseState::Root,
             root_type: ParsingRootType::Block,
             parent_parser_index: None,
         };
@@ -175,7 +175,7 @@ impl ParserArena {
         }
     }
 
-    pub(crate) fn parse(&mut self, source: &[u8]) -> Result<&Vec<Root>, String> {
+    pub(crate) fn parse(mut self, source: &[u8]) -> Result<RootCollection, String> {
         let ParserArena {
                 ref mut accumulator,
                 ref mut roots,
@@ -193,13 +193,11 @@ impl ParserArena {
                 byte
             );
             match result {
-                ParsedByteReturnIndication::Return => return Ok(&self.roots),
+                ParsedByteReturnIndication::Return => return Ok(RootCollection::from(self.roots)),
                 ParsedByteReturnIndication::Error(msg) => return Err(msg),
                 ParsedByteReturnIndication::Continue => ()
             }
         };
-
-
-        todo!()
+        Ok(RootCollection::from(self.roots))
     }
 }

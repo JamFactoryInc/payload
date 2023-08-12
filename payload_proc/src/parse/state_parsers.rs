@@ -17,10 +17,10 @@ impl RootParser {
     }
 
     pub(crate) fn parse(&mut self, char: &u8) -> ParseResult {
+        println!("parsing {:?} with state `{:?}`", char::from(char.clone()), self.state);
         match self.state {
             ParseState::Prefix(_) => self.prefix(char),
-            ParseState::Identifier => self.identifier(char),
-            ParseState::ArgsEnd => self.args_end(char),
+            ParseState::Identifier(_) => self.identifier(char),
             ParseState::Root => self.root(char),
             ParseState::AwaitingArgOrArgsEnd => self.awaiting_arg_or_end(char),
             ParseState::AwaitingDelimOrArgsEnd => self.awaiting_delim_or_end(char),
@@ -29,43 +29,7 @@ impl RootParser {
             ParseState::AccumulatingExpr(_) => self.accumulating_expr(char),
             ParseState::AccumulatingString(_) => self.accumulating_string(char),
             ParseState::AccumulatingStringEscaped(_) => self.accumulating_string_escaped(char),
-        }
-    }
-
-    //          _
-    // #matcher()  {
-    //           ^^^
-    //          _
-    // #matcher()  #matcher2
-    //           ^^^
-    //          _
-    // #matcher()  @modifier
-    //           ^^^
-    fn args_end(&mut self, char: &u8) -> ParseResult {
-        match char {
-            b' ' | b'\n' | b'\r' | b'\t' => Continue,
-            b'/' => {
-                self.state = ParseState::LineCommentStart;
-                Continue
-            }
-            b'#' => {
-                self.state = ParseState::Prefix(ParsingRootType::Matcher);
-                Continue
-            }
-            b'@' => {
-                self.state = ParseState::Prefix(ParsingRootType::Modifier);
-                Continue
-            }
-            b'"' => {
-                self.state = ParseState::AccumulatingString(StringAccumulatorPurpose::MatcherLiteral);
-                Continue
-            }
-            b'{' => {
-                // the state we should be in once we have responsibility again
-                self.state = ParseState::Root;
-                Defer
-            }
-            _ => ParseError("Illegal character at start of expression. Expected @ or #".to_string())
+            ParseState::AwaitingRootOrArgsBegin => self.awaiting_root_or_args_begin(char)
         }
     }
 
@@ -134,7 +98,8 @@ impl RootParser {
     //  ^
     fn prefix(&mut self, char: &u8) -> ParseResult {
         match (char, &self.root_type) {
-            (b'a'..=b'z' | b'A'..=b'Z' | b'_', _) => {
+            (b'a'..=b'z' | b'A'..=b'Z' | b'_', root_type) => {
+                self.state = ParseState::Identifier(root_type.clone());
                 Accumulate
             }
             (_, ParsingRootType::Matcher) => ParseError("Illegal character at start of matcher name. Expected [A-z_\"]".to_string()),
@@ -148,7 +113,20 @@ impl RootParser {
     fn identifier(&mut self, char: &u8) -> ParseResult {
         match char {
             b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_' => Accumulate,
-            _ => ParseError("Illegal character within of identifier. Expected [A-z0-9_]".to_string())
+            _ => {
+                self.state = ParseState::AwaitingRootOrArgsBegin;
+                Continue
+            }
+        }
+    }
+
+    fn awaiting_root_or_args_begin(&mut self, char: &u8) -> ParseResult {
+        match char {
+            b'(' => {
+                self.state = ParseState::AwaitingArgOrArgsEnd;
+                Continue
+            },
+            handle_root => self.root(handle_root)
         }
     }
 
@@ -164,7 +142,7 @@ impl RootParser {
                 Continue
             },
             b')' => {
-                self.state = ParseState::AwaitingArgOrArgsEnd;
+                self.state = ParseState::Root;
                 Continue
             }
             _ => ParseError("Expected start of expression ',' or ')'".to_string())
