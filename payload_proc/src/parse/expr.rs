@@ -1,3 +1,4 @@
+use crate::accumulator::Accumulator;
 use crate::parse::ParseResult;
 use crate::variable::Variable;
 
@@ -8,8 +9,10 @@ pub(crate) enum Expr {
     Postfix(Box<Expr>, ExprOperator),
     Prefix(ExprOperator, Box<Expr>),
     String(String),
-    Int(String),
+    Int(isize),
+    Float(f32),
     Variable(Variable),
+    Scope,
 }
 impl Default for Expr {
     fn default() -> Self {
@@ -20,7 +23,9 @@ impl TryFrom<String> for Expr {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        todo!()
+        let parser = ExprParser::new();
+
+
     }
 }
 
@@ -29,17 +34,77 @@ pub(crate) enum ExprOperator {
     Assign,
 }
 
-pub(crate) struct ExprParser {
+enum ExprParseState {
+    Default,
+    Ident(Box<ExprParseState>),
+    String,
+    StringEscaped,
+    Int,
+    Float,
+    LeadingDot,
+    Scope
+}
+
+enum ScopeParseState {
 
 }
+
+enum ExprParseResult {
+    Continue,
+    Parsed(Expr),
+    Error(String),
+}
+
+pub(crate) struct ExprParser {
+    state: ExprParseState,
+    accumulator: Accumulator,
+}
 impl ExprParser {
-    pub(crate) fn parse(&mut self, char: u8) -> ParseResult {
+    pub(crate) fn new() -> ExprParser {
+        ExprParser {
+            state: ExprParseState::Default,
+            accumulator: Accumulator::new(),
+        }
+    }
+
+    pub(crate) fn parse(&mut self, expr: String) -> Result<Vec<Expr>, String> {
         todo!()
+    }
+
+    pub(crate) fn parse_byte(&mut self, char: u8) -> ParseResult {
+        match (&char, &self.state) {
+            (b'$', ExprParseState::Default) => {
+                self.state = ExprParseState::Ident(Box::new(ExprParseState::Default));
+                ParseResult::Continue
+            }
+            (b'a'..=b'z', ExprParseState::Ident(_)) => ParseResult::Accumulate(char),
+            (_, ExprParseState::Ident(_)) =>
+                ParseResult::ParsedExpr(Expr::Variable(Variable::try_from(self.accumulator.move_string())?)),
+            (b'-' | b'0'..=b'9', ExprParseState::Default) => {
+                self.state = ExprParseState::Int;
+                ParseResult::Accumulate(char)
+            }
+            (b'.', ExprParseState::Default) => {
+                self.state = ExprParseState::LeadingDot;
+                ParseResult::Accumulate(char)
+            }
+            (b'.', ExprParseState::Int) | (b'0'..=b'9', ExprParseState::LeadingDot) => {
+                self.state = ExprParseState::Float;
+                ParseResult::Accumulate(char)
+            }
+            (b'/', ExprParseState::LeadingDot) => {
+                self.state = ExprParseState::Scope;
+                ParseResult::Accumulate(char)
+            }
+        }
     }
 }
 
 impl Default for ExprParser {
     fn default() -> Self {
-        ExprParser {}
+        ExprParser {
+            state: ExprParseState::Default,
+            accumulator: Accumulator::new()
+        }
     }
 }

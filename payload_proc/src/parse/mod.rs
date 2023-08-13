@@ -1,7 +1,9 @@
+use std::ops::{FromResidual, Try};
 use crate::parse::expr::Expr;
+use crate::root::RootType;
 
-pub mod parent;
-mod state_parsers;
+pub mod payload_parser;
+mod root_parser;
 pub mod expr;
 
 pub(crate) enum AccumulatorRepr {
@@ -10,12 +12,13 @@ pub(crate) enum AccumulatorRepr {
     MatcherLiteral,
     ModifierName,
     RustSrc,
+    Range
 }
 
 pub(crate) enum ParseResult {
     // the parser is not happy :(
     ParseError(String),
-    Accumulate,
+    Accumulate(u8),
     ParseAccumulated(AccumulatorRepr),
     // the parser is happy :)
     Continue,
@@ -26,24 +29,28 @@ pub(crate) enum ParseResult {
     // an enum variant hijacked by ExprParser
     ParsedExpr(Expr)
 }
+impl<A> FromResidual<Result<A, String>> for ParseResult {
+    fn from_residual(residual: Result<A, String>) -> Self {
+        match residual {
+            Ok(_) => Self::Continue,
+            Err(msg) => Self::ParseError(msg)
+        }
+    }
+}
+impl<T> FromResidual<Option<T>> for ParseResult {
+    fn from_residual(residual: Option<T>) -> Self {
+        match residual {
+            Some(_) => Self::Continue,
+            None => Self::ParseError("Unknown error from missing optional value".to_string())
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
-pub(crate) enum StringAccumulatorPurpose {
+pub(crate) enum AccumulatorPurpose {
     MatcherLiteral,
     WithinExpression(usize),
     Parameter,
-}
-
-#[derive(PartialEq, Clone, Debug)]
-pub(crate) enum ParsingRootType {
-    // the parser began after its parent found {
-    Block,
-    // the parser began after its parent found #
-    Matcher,
-    // the parser began after its parent found @
-    Modifier,
-    // the parser began at the global root level
-    Root,
 }
 
 // signifies what it just found
@@ -51,18 +58,33 @@ pub(crate) enum ParsingRootType {
 #[derive(Clone, Debug)]
 pub(crate) enum ParseState {
     LineCommentStart,
-    LineComment(Box<ParseState>),
-    Prefix(ParsingRootType),
-    Identifier(ParsingRootType),
+    LineComment { prev_state: Box<ParseState> },
+    Prefix(RootType),
+    Identifier(RootType),
     AwaitingArgOrArgsEnd,
     AwaitingDelimOrArgsEnd,
     AwaitingRootOrArgsBegin,
     // we're building an expression (usually a parameter)
     // accepts a depth for tracking parentheses
-    AccumulatingExpr(usize),
+    AccumulatingExpr { depth: usize },
     // we're building a string literal
-    AccumulatingString(StringAccumulatorPurpose),
+    AccumulatingString(AccumulatorPurpose),
     // we're still building a string literal but the last char was an escape
-    AccumulatingStringEscaped(StringAccumulatorPurpose),
+    AccumulatingStringEscaped(AccumulatorPurpose),
     Root,
+    Range(RangeParseState),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum RangeParseItem {
+    Left,
+    Right
+}
+#[derive(Clone, Debug)]
+pub(crate) enum RangeParseState {
+    AwaitingChar(RangeParseItem),
+    AwaitingEscapedChar(RangeParseItem),
+    AwaitingOpeningQuote,
+    AwaitingClosingQuote(RangeParseItem),
+    AwaitingDot(RangeParseItem)
 }
