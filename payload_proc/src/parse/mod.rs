@@ -5,6 +5,7 @@ use crate::root::RootType;
 pub mod payload_parser;
 mod root_parser;
 pub mod expr;
+mod scope;
 
 pub(crate) enum AccumulatorRepr {
     Expression,
@@ -15,21 +16,26 @@ pub(crate) enum AccumulatorRepr {
     Range
 }
 
-pub(crate) enum ParseResult {
+pub(crate) enum ParseResult<T> {
     // the parser is not happy :(
     ParseError(String),
     Accumulate(u8),
-    ParseAccumulated(AccumulatorRepr),
+    ParseAccumulated(T),
     // the parser is happy :)
     Continue,
     // defer responsibility to a new child parser and set its root type
     Defer,
     // the parser's done and gives its value back to the caller
     Parsed,
-    // an enum variant hijacked by ExprParser
-    ParsedExpr(Expr)
 }
-impl<A> FromResidual<Result<A, String>> for ParseResult {
+impl<T> TryInto<ParseResult<T>> for String {
+    type Error = ();
+
+    fn try_into(self) -> Result<ParseResult<T>, Self::Error> {
+        todo!()
+    }
+}
+impl<A> FromResidual<Result<A, String>> for ParseResult<AccumulatorRepr> {
     fn from_residual(residual: Result<A, String>) -> Self {
         match residual {
             Ok(_) => Self::Continue,
@@ -37,7 +43,7 @@ impl<A> FromResidual<Result<A, String>> for ParseResult {
         }
     }
 }
-impl<T> FromResidual<Option<T>> for ParseResult {
+impl<T> FromResidual<Option<T>> for ParseResult<AccumulatorRepr> {
     fn from_residual(residual: Option<T>) -> Self {
         match residual {
             Some(_) => Self::Continue,

@@ -36,7 +36,11 @@ impl Scope {
         unsafe {
             let src: u8x32 = transmute_unchecked([0u8;32].copy_from_slice(path.as_bytes()));
         }
-
-
     }
+}
+
+pub enum ScopedElement<T> {
+    StartScope,
+    EndScope,
+    Element(T)
 }

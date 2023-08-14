@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use crate::parse::{AccumulatorRepr, ParseResult, ParseState, RootType, AccumulatorPurpose, RangeParseState, RangeParseItem};
 use crate::parse::ParseResult::*;
-use crate::parse::ParseState::*;
+use self::ParseState::*;
 use crate::parse::RangeParseItem::*;
 use crate::parse::RangeParseState::*;
 
@@ -23,19 +23,19 @@ impl RootParser {
         self
     }
 
-    fn and_defer(&mut self) -> ParseResult {
+    fn and_defer(&mut self) -> ParseResult<AccumulatorRepr> {
         Defer
     }
 
-    fn and_continue(&mut self) -> ParseResult {
+    fn and_continue(&mut self) -> ParseResult<AccumulatorRepr> {
         Continue
     }
 
-    fn and_accumulate(&mut self, char: &u8) -> ParseResult {
+    fn and_accumulate(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         Accumulate(char.clone())
     }
 
-    fn and_parse_accumulated(&mut self, representation: AccumulatorRepr) -> ParseResult {
+    fn and_parse_accumulated(&mut self, representation: AccumulatorRepr) -> ParseResult<AccumulatorRepr> {
         ParseAccumulated(representation)
     }
 
@@ -47,7 +47,7 @@ impl RootParser {
         matches!(char, b'r' | b'n' | b't' | b'\'' | b'\\')
     }
 
-    fn and_accumulate_escaped(&mut self, char: &u8) -> ParseResult {
+    fn and_accumulate_escaped(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         Accumulate(match char {
             b'r' => b'\r',
             b'n' => b'\n',
@@ -59,7 +59,7 @@ impl RootParser {
         })
     }
 
-    pub(crate) fn parse(&mut self, char: &u8) -> ParseResult {
+    pub(crate) fn parse(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         println!("parsing {:?} with state `{:?}`", char::from(char.clone()), self.state);
         match self.state {
             Prefix(_) => self.prefix(char),
@@ -77,7 +77,7 @@ impl RootParser {
         }
     }
 
-    fn handle_range(&mut self, char: &u8) -> ParseResult {
+    fn handle_range(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         match (char, self.state.clone()) {
             (b'\\', Range(AwaitingChar(side))) =>
                 self.set_state(Range(AwaitingEscapedChar(side)))
@@ -117,7 +117,7 @@ impl RootParser {
     //          _
     // #matcher {
     //           ^
-    fn handle_root(&mut self, char: &u8) -> ParseResult {
+    fn handle_root(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         match char {
             c if c.is_ascii_whitespace() => Continue,
             b'/' => self.set_state(LineCommentStart)
@@ -147,14 +147,14 @@ impl RootParser {
         }
     }
 
-    fn line_comment(&mut self, char: &u8) -> ParseResult {
+    fn line_comment(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         if let (b'\n', LineComment { prev_state }) = (char, &self.state) {
             self.set_state(prev_state.deref().clone());
         }
         Continue
     }
 
-    fn line_comment_start(&mut self, char: &u8) -> ParseResult {
+    fn line_comment_start(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         match char {
             b'/' => self.set_state(LineComment { prev_state: Box::new(self.state.clone()) })
                         .and_continue(),
@@ -168,7 +168,7 @@ impl RootParser {
     // _
     // @modifier
     //  ^
-    fn prefix(&mut self, char: &u8) -> ParseResult {
+    fn prefix(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         match (char, self.state.clone()) {
             (b'a'..=b'z' | b'A'..=b'Z' | b'_', Prefix(root_type)) =>
                 self.set_state(Identifier(root_type))
@@ -183,7 +183,7 @@ impl RootParser {
     //  ______
     // #matcher {
     //   ^^^^^^
-    fn identifier(&mut self, char: &u8) -> ParseResult {
+    fn identifier(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         match (char, self.state.clone()) {
             (b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'_', _) => Accumulate(char.clone()),
             (b'(', Identifier(ident_type)) =>
@@ -206,7 +206,7 @@ impl RootParser {
         }
     }
 
-    fn awaiting_root_or_args_begin(&mut self, char: &u8) -> ParseResult {
+    fn awaiting_root_or_args_begin(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         match char {
             b'(' => self.set_state(AwaitingArgOrArgsEnd)
                         .and_continue(),
@@ -217,7 +217,7 @@ impl RootParser {
     //             __      _
     // #matcher(some , other) {
     //              ^^      ^
-    fn awaiting_delim_or_end(&mut self, char: &u8) -> ParseResult {
+    fn awaiting_delim_or_end(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         match char {
             c if c.is_ascii_whitespace() => Continue,
             b',' => self.set_state(AwaitingArgOrArgsEnd)
@@ -228,7 +228,7 @@ impl RootParser {
         }
     }
 
-    fn accumulating_string(&mut self, char: &u8) -> ParseResult {
+    fn accumulating_string(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         match (char, &self.state) {
             (b'\\', AccumulatingString(purpose)) => {
                 self.set_state(AccumulatingStringEscaped(purpose.clone()))
@@ -251,7 +251,7 @@ impl RootParser {
         }
     }
 
-    fn accumulating_string_escaped(&mut self, char: &u8) -> ParseResult {
+    fn accumulating_string_escaped(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         if let AccumulatingStringEscaped(purpose) = &self.state {
             self.set_state(AccumulatingString(purpose.clone()))
                 .and_accumulate_escaped(char)
@@ -260,7 +260,7 @@ impl RootParser {
         }
     }
 
-    fn accumulating_expr(&mut self, char: &u8) -> ParseResult {
+    fn accumulating_expr(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         match (char, &self.state) {
             (c, _) if c.is_ascii_whitespace() =>
                 Continue,
@@ -290,7 +290,7 @@ impl RootParser {
     //               __     _
     // #matcher(some , other,) {
     //                ^^     ^
-    fn awaiting_arg_or_end(&mut self, char: &u8) -> ParseResult {
+    fn awaiting_arg_or_end(&mut self, char: &u8) -> ParseResult<AccumulatorRepr> {
         match char {
             c if c.is_ascii_whitespace() => Continue,
             b'"' => self.set_state(AccumulatingString(AccumulatorPurpose::Parameter))

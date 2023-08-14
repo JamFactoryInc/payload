@@ -45,10 +45,6 @@ enum ExprParseState {
     Scope
 }
 
-enum ScopeParseState {
-
-}
-
 enum ExprParseResult {
     Continue,
     Parsed(Expr),
@@ -79,7 +75,7 @@ impl ExprParser {
             }
             (b'a'..=b'z', ExprParseState::Ident(_)) => ParseResult::Accumulate(char),
             (_, ExprParseState::Ident(_)) =>
-                ParseResult::ParsedExpr(Expr::Variable(Variable::try_from(self.accumulator.move_string())?)),
+                ParseResult::ParsedExpr(Expr::Variable(Variable::try_from(self.accumulator.move_vec())?)),
             (b'-' | b'0'..=b'9', ExprParseState::Default) => {
                 self.state = ExprParseState::Int;
                 ParseResult::Accumulate(char)

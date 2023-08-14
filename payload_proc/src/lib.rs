@@ -12,6 +12,7 @@ pub(crate) mod parse;
 mod variable;
 mod describe;
 mod accumulator;
+mod stateful_parser;
 
 #[proc_macro]
 pub fn regex(input: TokenStream) -> TokenStream {

@@ -102,13 +102,13 @@ impl PayloadParser {
             AccumulatorRepr::Expression => {
                 let latest_root = roots.last_mut()?;
                 latest_root.args.push(
-                    Expr::try_from(accumulator.move_string())?
+                    Expr::try_from(accumulator.move_vec())?
                 )
             },
             AccumulatorRepr::MatcherName => {
                 let new_root_index = roots.len();
                 let current_parent = &mut roots[current_parent_root_index.clone()];
-                let matcher_type = MatcherType::try_from(accumulator.move_string())?;
+                let matcher_type = MatcherType::try_from(accumulator.move_vec())?;
                 let new_root_index_within_parent = current_parent.branches.len();
                 current_parent.branches.push(BranchVariant::Root(new_root_index));
                 roots.push(Root {
@@ -124,7 +124,7 @@ impl PayloadParser {
             AccumulatorRepr::ModifierName => {
                 let new_root_index = roots.len();
                 let current_parent = &mut roots[current_parent_root_index.clone()];
-                let modifier_type = ModifierType::try_from(accumulator.move_string())?;
+                let modifier_type = ModifierType::try_from(accumulator.move_vec())?;
                 let new_root_index_within_parent = current_parent.branches.len();
                 current_parent.branches.push(BranchVariant::Root(new_root_index));
                 roots.push(Root {
@@ -144,7 +144,7 @@ impl PayloadParser {
                 current_parent.branches.push(BranchVariant::Root(new_root_index));
                 roots.push(Root {
                     branches: vec![],
-                    root_type: RootType::Matcher(MatcherType::Literal(accumulator.move_string())),
+                    root_type: RootType::Matcher(MatcherType::Literal(accumulator.move_vec())),
                     args: vec![],
                     parent_info: Some(ParentInfo {
                         index_of_parent: current_parent_root_index.clone(),
@@ -154,10 +154,10 @@ impl PayloadParser {
             }
             AccumulatorRepr::RustSrc => {
                 let current_parent = &mut roots[current_parent_root_index.clone()];
-                current_parent.branches.push(BranchVariant::Source(accumulator.move_string()));
+                current_parent.branches.push(BranchVariant::Source(accumulator.move_vec()));
             }
             AccumulatorRepr::Range => {
-                let accumulated = accumulator.move_string();
+                let accumulated = accumulator.move_vec();
                 let bytes = accumulated.as_bytes();
 
                 match (bytes.first(), bytes.get(1)) {
