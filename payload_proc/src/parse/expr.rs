@@ -1,5 +1,6 @@
 use crate::accumulator::Accumulator;
-use crate::parse::ParseResult;
+use crate::parse::{AccumulatorRepr, ParseResult};
+use crate::stateful_parser;
 use crate::variable::Variable;
 
 #[derive(Debug)]
@@ -25,7 +26,7 @@ impl TryFrom<String> for Expr {
     fn try_from(value: String) -> Result<Self, Self::Error> {
         let parser = ExprParser::new();
 
-
+        todo!()
     }
 }
 
@@ -59,7 +60,7 @@ impl ExprParser {
     pub(crate) fn new() -> ExprParser {
         ExprParser {
             state: ExprParseState::Default,
-            accumulator: Accumulator::new(),
+            accumulator: Accumulator::<u8>::new(),
         }
     }
 
@@ -67,15 +68,15 @@ impl ExprParser {
         todo!()
     }
 
-    pub(crate) fn parse_byte(&mut self, char: u8) -> ParseResult {
+    pub(crate) fn parse_byte(&mut self, char: u8) -> ParseResult<AccumulatorRepr> {
         match (&char, &self.state) {
             (b'$', ExprParseState::Default) => {
                 self.state = ExprParseState::Ident(Box::new(ExprParseState::Default));
                 ParseResult::Continue
             }
             (b'a'..=b'z', ExprParseState::Ident(_)) => ParseResult::Accumulate(char),
-            (_, ExprParseState::Ident(_)) =>
-                ParseResult::ParsedExpr(Expr::Variable(Variable::try_from(self.accumulator.move_vec())?)),
+            (_, ExprParseState::Ident(_)) => panic!(),
+                //ParseResult::ParsedExpr(Expr::Variable(Variable::try_from( Accumulator::vec_to_str(self.accumulator.move_vec()))?)),
             (b'-' | b'0'..=b'9', ExprParseState::Default) => {
                 self.state = ExprParseState::Int;
                 ParseResult::Accumulate(char)
@@ -100,7 +101,7 @@ impl Default for ExprParser {
     fn default() -> Self {
         ExprParser {
             state: ExprParseState::Default,
-            accumulator: Accumulator::new()
+            accumulator: Accumulator::<u8>::new()
         }
     }
 }

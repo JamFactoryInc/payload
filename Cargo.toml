@@ -9,7 +9,6 @@ edition = "2021"
 rand = "0.8.5"
 futures = "0.3.28"
 const_format = "0.2.30"
-paste = "1.0"
+paste = "1.0.13"
 payload_proc = { path = "payload_proc" }
 shared = { path = "shared" }
-paste = "1.0.13"
