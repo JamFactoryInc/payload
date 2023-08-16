@@ -1,4 +1,3 @@
-use paste::paste;
 
 // enum ScopeElement {
 //     //  ./
@@ -31,24 +30,33 @@ enum ScopeParseState {
 
 stateful_parser!{
     for struct Scope
-        use transitions
-            if (b'.')
-                move from Default to LeadingDot
-                then return Continue.
-            if (b'.')
-                move from Sep to LeadingDot
-                then return Continue.
-        for states
+        states
             Default,
             Sep,
             LeadingDot,
+            DoubleDot,
             StepDown,
             StepUp,
             PathName(String),
             Wildcard,
             DoubleWildcard
-        with elements
-            A
+        transitions
+            [Default | Sep] match b'.' => [LeadingDot] -> Continue;
+            [Default] match b'/' => [Sep] -> Continue;
+            [Default] match b'*' => [Wildcard] -> Continue;
+            [Wildcard] match b'*' => [DoubleWildcard] -> Continue;
+            [LeadingDot] match b'.' => [DoubleDot] -> Continue;
+            [LeadingDot] match b'/' => [StepDown] -> Continue;
+            [DoubleDot] match b'/' => [StepDown] -> Continue;
+            [DoubleDot] match b'.' => "Illegal extra '.'";
+            [Sep] match b'/' => "";
+        elements
+            Wildcard,
+            DoubleWildcard,
+            StepUp,
+            StepDown
+
+
 }
 struct Scope {
 

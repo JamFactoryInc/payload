@@ -21,6 +21,8 @@ pub(crate) enum ParseResult<T> {
     ParseError(String),
     Accumulate(u8),
     ParseAccumulated(T),
+    // this is a valid stopping point but the match might be longer
+    GreedyContinue,
     // the parser is happy :)
     Continue,
     // defer responsibility to a new child parser and set its root type

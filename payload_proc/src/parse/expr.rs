@@ -93,6 +93,7 @@ impl ExprParser {
                 self.state = ExprParseState::Scope;
                 ParseResult::Accumulate(char)
             }
+            _ => ParseResult::ParseError("Invalid syntax".to_string())
         }
     }
 }

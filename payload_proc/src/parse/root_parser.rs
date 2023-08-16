@@ -13,7 +13,6 @@ pub(crate) struct RootParser {
 
 impl RootParser {
     pub(crate) fn new() -> RootParser {
-        <u8 as Clone>::clone(0u8);
         RootParser {
             state: Root,
             parent_parser_index: None,
